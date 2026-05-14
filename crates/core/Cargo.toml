@@ -1,0 +1,22 @@
+[package]
+name          = "atomr-physical-core"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+homepage      = { workspace = true }
+authors       = { workspace = true }
+description   = "Core types for atomr-physical: device ids, physical quantities, sensor readings, actuation commands, errors, and the device-contract traits."
+
+keywords      = ["robotics", "sensors", "actuators", "atomr", "actor"]
+categories    = ["science::robotics", "embedded"]
+readme        = "../../README.md"
+
+[dependencies]
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+thiserror   = { workspace = true }
+async-trait = { workspace = true }
+uuid        = { workspace = true }
+chrono      = { workspace = true }

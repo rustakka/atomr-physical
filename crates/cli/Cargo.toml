@@ -1,0 +1,30 @@
+[package]
+name          = "atomr-physical-cli"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+homepage      = { workspace = true }
+authors       = { workspace = true }
+description   = "atomr-physical CLI: inspect devices, take readings, dispatch commands, and plan the ROS2 bridge."
+
+keywords      = ["robotics", "cli", "atomr", "ros2", "sensors"]
+categories    = ["command-line-utilities", "science::robotics"]
+readme        = "../../README.md"
+
+[[bin]]
+name = "atomr-physical"
+path = "src/main.rs"
+
+[dependencies]
+atomr-physical-core      = { workspace = true }
+atomr-physical-sensing   = { workspace = true }
+atomr-physical-actuation = { workspace = true }
+atomr-physical-robotics  = { workspace = true }
+atomr-physical-ros2      = { workspace = true }
+clap                     = { workspace = true }
+tokio                    = { workspace = true }
+anyhow                   = { workspace = true }
+tracing                  = { workspace = true }
+tracing-subscriber       = { workspace = true }

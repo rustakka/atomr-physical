@@ -1,0 +1,105 @@
+# PR + push gate.
+#
+# ┌─────────────────────────────────────────────────────────────────────┐
+# │ AUTOMATIC EXECUTION IS INTENTIONALLY DISABLED.                      │
+# │                                                                     │
+# │ While atomr-physical is still being built out, this workflow runs   │
+# │ ONLY on manual `workflow_dispatch`. To turn the repo's CI gate on,  │
+# │ uncomment the `push` / `pull_request` trigger block below — the     │
+# │ jobs themselves are complete and follow the atomr CI convention.    │
+# └─────────────────────────────────────────────────────────────────────┘
+#
+# atomr-physical consumes the atomr actor runtime as a crates.io
+# dependency, so CI needs no side-by-side sibling checkout.
+
+name: CI
+
+on:
+  workflow_dispatch:
+  # Uncomment to enable the automatic PR + push gate:
+  # push:
+  #   branches: [main]
+  # pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: rustfmt }
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: clippy }
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo clippy --workspace --all-targets
+        # Aesthetic / preference lints are allowed; CI denies real bugs
+        # (todo!, unimplemented!, panic in impl). `dead_code` is allowed
+        # because library-public structs and stock trait impls show up
+        # as never-constructed inside their own crate.
+        run: |
+          cargo clippy --workspace --all-targets -- \
+            -D warnings \
+            -A dead_code \
+            -A unused_imports \
+            -A clippy::manual_div_ceil \
+            -A clippy::iter_over_hash_type \
+            -A clippy::type_complexity \
+            -A clippy::should_implement_trait \
+            -A clippy::new_without_default \
+            -A clippy::result_large_err \
+            -A clippy::len_without_is_empty \
+            -A clippy::collapsible_if \
+            -A clippy::derivable_impls \
+            -A clippy::needless_borrow \
+            -A clippy::redundant_closure \
+            -A clippy::large_enum_variant \
+            -A clippy::too_many_arguments \
+            -A clippy::useless_conversion \
+            -A clippy::bind_instead_of_map \
+            -A clippy::needless_question_mark
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+
+  feature-flags:
+    name: feature-flag matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Umbrella default
+        run: cargo build -p atomr-physical
+      - name: Umbrella no-default-features
+        run: cargo build -p atomr-physical --no-default-features
+      - name: Umbrella full
+        # `--all-features` would enable `rclrs`, which needs a ROS2
+        # toolchain on the runner. Exercise the `full` feature instead;
+        # the `rclrs` bridge is checked separately on a ROS2 runner.
+        run: cargo build -p atomr-physical --features full
+
+  rustdoc:
+    name: rustdoc (broken-link gate)
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings -D rustdoc::broken-intra-doc-links --cfg docsrs"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo doc --workspace --no-deps
+        run: cargo doc --workspace --no-deps

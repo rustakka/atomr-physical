@@ -1,0 +1,7 @@
+{
+  "name": "atomr-physical-ai-skills",
+  "version": "0.1.0",
+  "description": "Skills for AI coding assistants working on projects that depend on atomr-physical.",
+  "homepage": "https://github.com/rustakka/atomr-physical",
+  "skills_dir": "skills"
+}

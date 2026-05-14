@@ -1,0 +1,61 @@
+# Build rustdoc and deploy to GitHub Pages.
+#
+# ┌─────────────────────────────────────────────────────────────────────┐
+# │ AUTOMATIC EXECUTION IS INTENTIONALLY DISABLED.                      │
+# │                                                                     │
+# │ While atomr-physical is still being built out, this workflow runs   │
+# │ ONLY on manual `workflow_dispatch`. To publish docs automatically   │
+# │ on every push to `main`, uncomment the `push` trigger below.        │
+# └─────────────────────────────────────────────────────────────────────┘
+
+name: Docs
+
+on:
+  workflow_dispatch:
+  # Uncomment to publish docs automatically on every push to main:
+  # push:
+  #   branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: "--cfg docsrs"
+        run: cargo doc --workspace --no-deps
+      - name: Stage docs
+        run: |
+          mkdir -p _site
+          cp -r target/doc/* _site/
+          # Redirect /index.html to the umbrella crate.
+          cat > _site/index.html <<'HTML'
+          <!doctype html>
+          <meta http-equiv="refresh" content="0; url=atomr_physical/index.html">
+          <link rel="canonical" href="atomr_physical/index.html">
+          HTML
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: _site }
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

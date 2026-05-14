@@ -1,0 +1,28 @@
+[package]
+name          = "atomr-physical-py-bindings"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+homepage      = { workspace = true }
+authors       = { workspace = true }
+description   = "PyO3 bindings for atomr-physical: the atomr_physical._native extension module wrapping core, sensing, actuation, robotics, and the ROS2 bridge."
+
+keywords      = ["robotics", "python", "pyo3", "atomr", "ros2"]
+categories    = ["science::robotics", "api-bindings"]
+readme        = "../../README.md"
+
+[lib]
+# Must match the maturin `module-name = "atomr_physical._native"` so the
+# cdylib emits PyInit__native.
+name       = "_native"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+atomr-physical-core      = { workspace = true }
+atomr-physical-sensing   = { workspace = true }
+atomr-physical-actuation = { workspace = true }
+atomr-physical-robotics  = { workspace = true }
+atomr-physical-ros2      = { workspace = true }
+pyo3                     = { workspace = true, features = ["extension-module"] }

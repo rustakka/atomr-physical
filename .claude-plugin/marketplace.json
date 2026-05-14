@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "atomr-physical",
+  "description": "Skills and plugins for working on projects that depend on atomr-physical, the physical sensing, output, and ROS2-integrated robotics layer for the atomr actor runtime.",
+  "owner": {
+    "name": "rustakka",
+    "url": "https://github.com/rustakka"
+  },
+  "plugins": [
+    {
+      "name": "atomr-physical-ai-skills",
+      "description": "Skills for AI coding assistants working on projects that depend on atomr-physical — quickstart, sensing, actuation, robotics orchestration, the ROS2 bridge, the Python overlay, and troubleshooting.",
+      "author": {
+        "name": "rustakka"
+      },
+      "category": "development",
+      "source": "./ai-skills",
+      "homepage": "https://github.com/rustakka/atomr-physical/tree/main/ai-skills"
+    }
+  ]
+}

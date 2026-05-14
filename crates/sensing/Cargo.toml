@@ -1,0 +1,25 @@
+[package]
+name          = "atomr-physical-sensing"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+homepage      = { workspace = true }
+authors       = { workspace = true }
+description   = "Sensor-side actors for atomr-physical: sampling policies, calibration, and the SensorActor that adapts a Sensor driver into a supervised atomr actor."
+
+keywords      = ["robotics", "sensors", "atomr", "actor", "ros2"]
+categories    = ["science::robotics", "asynchronous"]
+readme        = "../../README.md"
+
+[dependencies]
+atomr-physical-core = { workspace = true }
+atomr-core          = { workspace = true }
+serde               = { workspace = true }
+tokio               = { workspace = true }
+async-trait         = { workspace = true }
+tracing             = { workspace = true }
+
+[dev-dependencies]
+atomr-physical-testkit = { workspace = true }

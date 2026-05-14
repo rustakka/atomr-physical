@@ -1,0 +1,25 @@
+/target
+**/*.rs.bk
+Cargo.lock
+.DS_Store
+*.swp
+
+# Editor / agentic-tool local state
+.claude/
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.venv-*/
+dist/
+build/
+
+# maturin-built native extension (developers run `maturin develop` locally;
+# the wheel is built fresh in CI).
+python/atomr_physical/_native*.so
+python/atomr_physical/_native*.pyd
+*.so

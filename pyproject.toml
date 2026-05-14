@@ -1,0 +1,55 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "atomr-physical"
+version = "0.1.0"
+description = "Physical sensing, output, and ROS2-integrated robotics as native atomr actors, with a first-class Python API."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "atomr-physical contributors" }]
+keywords = ["robotics", "ros2", "sensors", "actuators", "actor", "rust", "atomr"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Rust",
+  "License :: OSI Approved :: Apache Software License",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: System :: Hardware",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+]
+
+[project.urls]
+Homepage = "https://github.com/rustakka/atomr-physical"
+Documentation = "https://github.com/rustakka/atomr-physical/tree/main/docs"
+Repository = "https://github.com/rustakka/atomr-physical"
+Issues = "https://github.com/rustakka/atomr-physical/issues"
+Changelog = "https://github.com/rustakka/atomr-physical/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-asyncio>=0.23"]
+
+[tool.maturin]
+manifest-path = "crates/py-bindings/Cargo.toml"
+module-name = "atomr_physical._native"
+python-source = "python"
+features = []
+include = [
+  { path = "LICENSE", format = "sdist" },
+  { path = "python/atomr_physical/py.typed", format = ["sdist", "wheel"] },
+]
+
+[tool.pytest.ini_options]
+testpaths = ["python/atomr_physical/tests"]
+asyncio_mode = "auto"

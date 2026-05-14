@@ -1,0 +1,392 @@
+name: Release
+
+# Ships atomr-physical to crates.io, PyPI, and GitHub Releases.
+#
+# ┌─────────────────────────────────────────────────────────────────────┐
+# │ AUTOMATIC EXECUTION IS INTENTIONALLY DISABLED.                      │
+# │                                                                     │
+# │ While atomr-physical is still being built out, this workflow runs   │
+# │ ONLY on manual `workflow_dispatch` (which is also how the           │
+# │ `version-bump.yml` trampoline fires it). To also accept direct tag  │
+# │ pushes (`git push origin vX.Y.Z`), uncomment the `push: tags`       │
+# │ trigger below. The jobs are complete and follow the atomr release   │
+# │ convention — see RELEASING.md and docs/release-{pipeline,process}.md.│
+# └─────────────────────────────────────────────────────────────────────┘
+#
+# This workflow:
+#   1. Runs the verify gate (build + test) so a tag never ships an
+#      untested build.
+#   2. Builds release binaries (`atomr-physical` from
+#      `atomr-physical-cli`) for Linux x86_64 + aarch64, macOS x86_64 +
+#      aarch64, Windows x86_64.
+#   3. Builds Python wheels (manylinux + musllinux for x86_64/aarch64,
+#      macOS universal2, Windows) covering CPython 3.10–3.13 via
+#      maturin, plus a single sdist.
+#   4. Packages `ai-skills.tar.gz` for the Claude Code marketplace.
+#   5. Creates the GitHub Release with the artifacts attached.
+#   6. Publishes every publishable Rust crate to crates.io in
+#      dependency order.
+#   7. Publishes wheels + sdist to PyPI via OIDC trusted publishing
+#      (or TestPyPI for dry-runs).
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run cargo publish + maturin upload with --dry-run; skip GitHub Release upload"
+        required: false
+        default: "true"
+      skip_python:
+        description: "Skip the Python wheel build/publish jobs"
+        required: false
+        default: "false"
+      skip_crates:
+        description: "Skip the crates.io publish job"
+        required: false
+        default: "false"
+  # Uncomment to also fire on direct `v*` tag pushes:
+  # push:
+  #   tags: ["v*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    name: verify (build + test gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace
+      # Exercise the umbrella `full` feature surface (sensing + actuation
+      # + robotics + ros2 + testkit). `rclrs` is excluded — it needs a
+      # ROS2 toolchain that GitHub-hosted runners don't carry.
+      - run: cargo check -p atomr-physical --features full
+      - run: cargo test --workspace
+
+  build-binaries:
+    name: build-binaries (${{ matrix.target }})
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu,  runner: ubuntu-latest,    archive_ext: tar.gz }
+          # aarch64 Linux glibc — built natively on a GitHub-hosted ARM
+          # runner to avoid cross-compile blockers.
+          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-22.04-arm, archive_ext: tar.gz }
+          - { target: x86_64-apple-darwin,       runner: macos-latest,     archive_ext: tar.gz }
+          - { target: aarch64-apple-darwin,      runner: macos-latest,     archive_ext: tar.gz }
+          - { target: x86_64-pc-windows-msvc,    runner: windows-latest,   archive_ext: zip,    bin_ext: .exe }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Build atomr-physical binary
+        run: cargo build --release -p atomr-physical-cli --target ${{ matrix.target }}
+      - name: Stage artifact (unix)
+        if: matrix.archive_ext == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          src="target/${{ matrix.target }}/release/atomr-physical"
+          [ -f "$src" ] && cp "$src" "artifacts/atomr-physical-${{ matrix.target }}"
+          (cd artifacts && tar czf "atomr-physical-${{ matrix.target }}.tar.gz" "atomr-physical-${{ matrix.target }}")
+          ls -la artifacts
+      - name: Stage artifact (windows)
+        if: matrix.archive_ext == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $src = "target/${{ matrix.target }}/release/atomr-physical${{ matrix.bin_ext }}"
+          if (Test-Path $src) { Copy-Item $src "artifacts/atomr-physical-${{ matrix.target }}${{ matrix.bin_ext }}" }
+          Compress-Archive -Path "artifacts/atomr-physical-${{ matrix.target }}*" -DestinationPath "artifacts/atomr-physical-${{ matrix.target }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-${{ matrix.target }}
+          path: artifacts/atomr-physical-${{ matrix.target }}.${{ matrix.archive_ext }}
+
+  build-wheels:
+    name: build-wheels (${{ matrix.target }} / ${{ matrix.runner }})
+    needs: verify
+    if: github.event.inputs.skip_python != 'true'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest,    target: x86_64-unknown-linux-gnu,    python-target: x86_64,     manylinux: auto }
+          - { runner: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu,   python-target: aarch64,    manylinux: auto }
+          - { runner: ubuntu-latest,    target: x86_64-unknown-linux-musl,   python-target: x86_64,     manylinux: musllinux_1_2 }
+          - { runner: ubuntu-22.04-arm, target: aarch64-unknown-linux-musl,  python-target: aarch64,    manylinux: musllinux_1_2 }
+          - { runner: macos-latest,     target: universal2-apple-darwin,     python-target: universal2, manylinux: "off" }
+          - { runner: windows-latest,   target: x86_64-pc-windows-msvc,      python-target: x64,        manylinux: "off" }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheels (maturin)
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.python-target }}
+          # Build a wheel per supported CPython ABI on this platform.
+          # PyO3 0.22 supports CPython 3.10–3.13.
+          args: --release --strip --out dist --interpreter "python3.10 python3.11 python3.12 python3.13"
+          manylinux: ${{ matrix.manylinux }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.target }}
+          path: dist/*.whl
+
+  build-sdist:
+    name: build-sdist (Python)
+    needs: verify
+    if: github.event.inputs.skip_python != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  package-skills:
+    name: package ai-skills.tar.gz
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tar ai-skills/
+        run: tar -czf ai-skills.tar.gz ai-skills/
+      - uses: actions/upload-artifact@v4
+        with: { name: ai-skills, path: ai-skills.tar.gz }
+
+  github-release:
+    name: GitHub Release
+    needs: [verify, build-binaries, build-wheels, build-sdist, package-skills]
+    runs-on: ubuntu-latest
+    # Run for direct tag pushes (once that trigger is enabled) AND for
+    # `workflow_dispatch` runs targeting a `v*` ref with dry_run=false
+    # (the trampoline path used by `version-bump.yml`).
+    if: |
+      startsWith(github.ref, 'refs/tags/v') &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run != 'true'))
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Flatten + list artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name 'atomr-physical-*' -o -name '*.whl' -o -name '*.tar.gz' -o -name '*.zip' \) -exec cp {} release/ \;
+          ls -la release
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          notes=$(awk "/^## \[Unreleased\]/{flag=1; next} flag && /^## /{exit} flag" CHANGELOG.md || true)
+          if [ -z "$notes" ]; then
+            notes="Release ${TAG}. See CHANGELOG.md for details."
+          fi
+          if gh release view "$TAG" --json tagName >/dev/null 2>&1; then
+            echo "release $TAG already exists; uploading assets with --clobber"
+            gh release upload "$TAG" --clobber release/*
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes "$notes" \
+              release/*
+          fi
+
+  publish-crates:
+    name: publish crates.io
+    needs: [verify, github-release]
+    runs-on: ubuntu-latest
+    if: |
+      startsWith(github.ref, 'refs/tags/v') &&
+      github.event.inputs.skip_crates != 'true' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run != 'true'))
+    permissions:
+      contents: read
+    env:
+      # Repo secret name is CRATES_IO_TOKEN; cargo reads
+      # CARGO_REGISTRY_TOKEN, so map it through.
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+      ALLOWLIST: ${{ vars.ATOMR_PHYSICAL_PUBLISH_ALLOWLIST }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Publish each crate in dep order
+        run: |
+          set -euo pipefail
+          # Default = full workspace, in dep order. `testkit` slots in
+          # right after `core` because `sensing` / `actuation` /
+          # `robotics` dev-depend on it.
+          default_order=(
+            atomr-physical-core
+            atomr-physical-testkit
+            atomr-physical-sensing
+            atomr-physical-actuation
+            atomr-physical-robotics
+            atomr-physical-ros2
+            atomr-physical-py-bindings
+            atomr-physical-cli
+            atomr-physical
+          )
+          if [ -n "${ALLOWLIST:-}" ]; then
+            read -r -a list <<< "$ALLOWLIST"
+          else
+            list=("${default_order[@]}")
+          fi
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "::error::CARGO_REGISTRY_TOKEN secret is empty"
+            exit 1
+          fi
+          # crates.io rate-limits new crates at ~1/min for fresh
+          # accounts/orgs. Pace the loop at 70s and retry on 429.
+          PER_CRATE_SLEEP=70
+          publish_one() {
+            local crate=$1
+            local attempt=0
+            while true; do
+              attempt=$((attempt + 1))
+              echo "==> publishing $crate (attempt $attempt)"
+              if out=$(cargo publish -p "$crate" 2>&1); then
+                echo "$out"
+                return 0
+              fi
+              echo "$out"
+              if printf '%s' "$out" | grep -qE 'crate version .* is already uploaded|already exists'; then
+                echo "::warning::$crate already on crates.io at this version; skipping"
+                return 0
+              fi
+              if printf '%s' "$out" | grep -q '429 Too Many Requests'; then
+                if [ "$attempt" -ge 12 ]; then
+                  echo "::error::rate-limited too many times on $crate"
+                  return 1
+                fi
+                local wait=620   # 10 min + 20s slack
+                echo "rate-limited; sleeping ${wait}s before retrying $crate (attempt $attempt/12)"
+                sleep "$wait"
+                continue
+              fi
+              echo "::error::cargo publish failed for $crate"
+              return 1
+            done
+          }
+          for crate in "${list[@]}"; do
+            publish_one "$crate"
+            sleep "$PER_CRATE_SLEEP"
+          done
+
+  publish-crates-dry-run:
+    name: publish crates.io (dry run)
+    needs: verify
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true' && github.event.inputs.skip_crates != 'true'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Dry-run publish (full workspace)
+        run: |
+          for c in atomr-physical-core atomr-physical-testkit atomr-physical-sensing \
+                   atomr-physical-actuation atomr-physical-robotics atomr-physical-ros2 \
+                   atomr-physical-py-bindings atomr-physical-cli atomr-physical; do
+            echo "==> $c"
+            cargo publish -p "$c" --dry-run --allow-dirty || true
+          done
+
+  publish-pypi:
+    name: publish PyPI
+    needs: [verify, build-wheels, build-sdist, github-release]
+    runs-on: ubuntu-latest
+    if: |
+      startsWith(github.ref, 'refs/tags/v') &&
+      github.event.inputs.skip_python != 'true' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run != 'true'))
+    # Trusted publishing — configure on PyPI: pypi.org → manage project →
+    # publishing → add GitHub publisher (owner / repo / workflow / env).
+    environment:
+      name: pypi
+      url: https://pypi.org/p/atomr-physical
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: "{wheels-*,sdist}"
+      - name: Flatten wheel + sdist artifacts
+        run: |
+          mkdir -p upload
+          find dist -type f \( -name "*.whl" -o -name "*.tar.gz" \) -exec cp {} upload/ \;
+          ls -la upload/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: upload
+          # If trusted publishing is not yet configured, set
+          # `password: ${{ secrets.PYPI_API_TOKEN }}` instead.
+          skip-existing: true
+
+  publish-pypi-dry-run:
+    name: PyPI dry-run (TestPyPI)
+    needs: [build-wheels, build-sdist]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true' && github.event.inputs.skip_python != 'true'
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/atomr-physical
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: "{wheels-*,sdist}"
+      - name: Flatten wheel + sdist artifacts
+        run: |
+          mkdir -p upload
+          find dist -type f \( -name "*.whl" -o -name "*.tar.gz" \) -exec cp {} upload/ \;
+          ls -la upload/
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: upload
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true

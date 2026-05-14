@@ -1,0 +1,229 @@
+name: Version bump + tag
+
+# Decide a SemVer bump from Conventional-Commit subjects since the last
+# tag, bump the workspace + pyproject version, push a `vX.Y.Z` tag, and
+# trampoline `release.yml` against it.
+#
+# ┌─────────────────────────────────────────────────────────────────────┐
+# │ AUTOMATIC EXECUTION IS INTENTIONALLY DISABLED.                      │
+# │                                                                     │
+# │ While atomr-physical is still being built out, this workflow runs   │
+# │ ONLY on manual `workflow_dispatch`. To enable the auto-release      │
+# │ trampoline (decide-and-tag on every push to `main`), uncomment the  │
+# │ `push` trigger below — the job logic is complete and follows the    │
+# │ atomr release convention. See RELEASING.md and                     │
+# │ docs/release-process.md.                                            │
+# └─────────────────────────────────────────────────────────────────────┘
+#
+# Bump rules (highest precedence first):
+#   * `Release-As: X.Y.Z` footer / workflow_dispatch `release_as`  → exact
+#   * `BREAKING CHANGE` body or `!:` after type                    → major
+#   * `feat:`                                                      → minor
+#   * `fix:` / `perf:` / `revert:`                                 → patch
+#   * `chore:` / `docs:` / `ci:` / `test:` / `refactor:` /
+#     `style:` / `build:` only                                     → skip
+#
+# The `Trigger release.yml against the new tag` step is REQUIRED: tag
+# pushes authored by the default `GITHUB_TOKEN` do NOT fire
+# `on: push: tags` workflows (a long-standing GitHub safety feature).
+# Without an explicit `gh workflow run`, releases would silently never
+# publish.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print the bump decision but skip commit + tag"
+        required: false
+        default: "false"
+      release_as:
+        description: "Pin to an exact version (e.g. 0.1.0). Overrides Conventional-Commit decision."
+        required: false
+        default: ""
+      force:
+        description: "Force a bump kind (patch|minor|major) even when commits are skip-only"
+        required: false
+        default: ""
+  # Uncomment to enable the auto-release trampoline on every push to main:
+  # push:
+  #   branches: [main]
+
+concurrency:
+  group: version-bump
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  # Needed so the post-tag step can `gh workflow run release.yml`
+  # against the freshly-pushed `vX.Y.Z` tag. Tags pushed by a job using
+  # the default `GITHUB_TOKEN` do NOT trigger downstream workflows on
+  # their own, so the release pipeline has to be kicked off explicitly.
+  actions: write
+
+jobs:
+  decide-and-bump:
+    name: Decide bump + tag
+    runs-on: ubuntu-latest
+    # Skip when the head commit is the bot's own bump commit so we don't
+    # loop (only relevant once the `push` trigger is enabled).
+    if: github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'chore(release):')
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Decide bump kind from Conventional Commits
+        id: decide
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          RELEASE_AS: ${{ github.event.inputs.release_as }}
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          set -euo pipefail
+          if [ -n "${RELEASE_AS:-}" ]; then
+            echo "kind=set:$RELEASE_AS" >> "$GITHUB_OUTPUT"
+            echo "Override via workflow_dispatch release_as: $RELEASE_AS"
+            exit 0
+          fi
+          if [ -n "${FORCE:-}" ]; then
+            echo "kind=$FORCE" >> "$GITHUB_OUTPUT"
+            echo "Forced bump: $FORCE"
+            exit 0
+          fi
+          last_tag=$(git tag --sort=-creatordate | head -n1 || true)
+          if [ -z "$last_tag" ]; then
+            # No prior tag — refuse to auto-bump. The first release must
+            # be explicit via `workflow_dispatch` with `release_as=x.y.z`
+            # (or a `Release-As: x.y.z` footer in the most recent commit).
+            head_msg=$(git log -1 --pretty=format:%B || true)
+            release_as_footer=$(printf '%s\n' "$head_msg" | grep -E '^Release-As: ' | tail -n1 | awk '{print $2}' || true)
+            if [ -n "$release_as_footer" ]; then
+              echo "kind=set:$release_as_footer" >> "$GITHUB_OUTPUT"
+              echo "First-release override via Release-As footer: $release_as_footer"
+              exit 0
+            fi
+            echo "kind=skip" >> "$GITHUB_OUTPUT"
+            echo "First-release safety: no prior tag and no Release-As footer; skipping."
+            exit 0
+          fi
+          range="${last_tag}..HEAD"
+          subjects=$(git log --no-merges --pretty=format:%s%n%b "$range" || true)
+
+          release_as_footer=$(printf '%s\n' "$subjects" | grep -E '^Release-As: ' | tail -n1 | awk '{print $2}' || true)
+          if [ -n "$release_as_footer" ]; then
+            echo "kind=set:$release_as_footer" >> "$GITHUB_OUTPUT"
+            echo "Override via Release-As footer: $release_as_footer"
+            exit 0
+          fi
+
+          if printf '%s' "$subjects" | grep -qE 'BREAKING CHANGE|^[a-z]+(\([^)]+\))?!:'; then
+            echo "kind=major" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if printf '%s' "$subjects" | grep -qE '^feat(\([^)]+\))?:'; then
+            echo "kind=minor" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if printf '%s' "$subjects" | grep -qE '^(fix|perf|revert)(\([^)]+\))?:'; then
+            echo "kind=patch" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Only chore/docs/ci/test/refactor/style/build → skip.
+          echo "kind=skip" >> "$GITHUB_OUTPUT"
+
+      - name: Install cargo-edit
+        if: steps.decide.outputs.kind != 'skip'
+        run: cargo install cargo-edit --locked
+
+      - name: Bump version + refresh Cargo.lock
+        if: steps.decide.outputs.kind != 'skip'
+        id: bump
+        run: |
+          set -euo pipefail
+          kind="${{ steps.decide.outputs.kind }}"
+          if [[ "$kind" == set:* ]]; then
+            ver="${kind#set:}"
+            cargo set-version --workspace "$ver"
+          else
+            cargo set-version --workspace --bump "$kind"
+          fi
+          new_ver=$(awk '
+            /^\[workspace\.package\]/ { f=1; next }
+            f && /^\[/ { exit }
+            f && /^version[[:space:]]*=/ {
+              match($0, /"[^"]+"/)
+              print substr($0, RSTART+1, RLENGTH-2)
+              exit
+            }' Cargo.toml)
+          if [ -z "$new_ver" ]; then
+            echo "::error::failed to extract bumped version from Cargo.toml"
+            exit 1
+          fi
+          echo "version=$new_ver" >> "$GITHUB_OUTPUT"
+
+      - name: Bump pyproject.toml to match
+        if: steps.decide.outputs.kind != 'skip'
+        env:
+          NEW_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, re
+          p = pathlib.Path("pyproject.toml")
+          new_ver = os.environ["NEW_VERSION"]
+          text = p.read_text()
+          new = re.sub(
+              r'^version\s*=\s*"[^"]+"',
+              f'version = "{new_ver}"',
+              text,
+              count=1,
+              flags=re.M,
+          )
+          if new == text:
+              raise SystemExit("pyproject.toml: no top-level version line matched")
+          p.write_text(new)
+          print(f"pyproject.toml -> {new_ver}")
+          PY
+
+      - name: Commit + tag
+        if: steps.decide.outputs.kind != 'skip' && github.event.inputs.dry_run != 'true'
+        env:
+          NEW_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "atomr-physical-release-bot"
+          git config user.email "release-bot@users.noreply.github.com"
+          # cargo set-version --workspace touches every member's
+          # Cargo.toml, not just the root — including xtask. Stage all.
+          git add -A
+          if git diff --cached --quiet; then
+            echo "no diff to commit; tagging current HEAD as v${NEW_VERSION}"
+          else
+            git commit -m "chore(release): v${NEW_VERSION}"
+          fi
+          git tag -a "v${NEW_VERSION}" -m "atomr-physical v${NEW_VERSION}"
+          git push origin HEAD --follow-tags
+
+      - name: Trigger release.yml against the new tag
+        if: steps.decide.outputs.kind != 'skip' && github.event.inputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Tag pushes authored by GITHUB_TOKEN don't fire `on: push: tags`
+          # workflows, so dispatch release.yml ourselves against the
+          # freshly pushed tag ref. `dry_run=false` performs the real
+          # publish.
+          gh workflow run release.yml \
+            --ref "v${NEW_VERSION}" \
+            -f dry_run=false \
+            -f skip_python=false \
+            -f skip_crates=false
+
+      - name: Summary
+        run: |
+          echo "kind=${{ steps.decide.outputs.kind }}"
+          echo "version=${{ steps.bump.outputs.version || 'unchanged' }}"

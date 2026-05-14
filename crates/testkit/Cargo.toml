@@ -1,0 +1,21 @@
+[package]
+name          = "atomr-physical-testkit"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+homepage      = { workspace = true }
+authors       = { workspace = true }
+description   = "Test doubles for atomr-physical: MockSensor and MockActuator implementing the device-contract traits with in-memory behaviour."
+
+keywords      = ["robotics", "testing", "mock", "atomr", "actor"]
+categories    = ["science::robotics", "development-tools::testing"]
+readme        = "../../README.md"
+
+[dependencies]
+atomr-physical-core = { workspace = true }
+async-trait         = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

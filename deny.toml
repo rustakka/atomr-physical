@@ -1,0 +1,55 @@
+# cargo-deny configuration for atomr-physical.
+#
+# Run `cargo deny check` locally. The release pre-flight runs the same
+# command; CI is wired for it but auto-execution is intentionally off
+# while the repo is still being built out (see RELEASING.md).
+
+[graph]
+# Check Linux and macOS targets so platform-specific issues still trip
+# the supply-chain audit.
+targets = [
+  { triple = "x86_64-unknown-linux-gnu" },
+  { triple = "aarch64-unknown-linux-gnu" },
+  { triple = "x86_64-apple-darwin" },
+  { triple = "aarch64-apple-darwin" },
+]
+all-features = false
+
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked  = "warn"
+
+[licenses]
+# Apache-2.0 is the workspace's primary license; everything else is
+# transitive. Permissive-only — no GPL / LGPL / MPL / SSPL allowed.
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-DFS-2016",
+  "Unicode-3.0",
+  "Zlib",
+  "CC0-1.0",
+  "BSL-1.0",
+]
+confidence-threshold = 0.93
+
+[bans]
+multiple-versions = "warn"
+wildcards         = "warn"
+highlight         = "all"
+deny = []
+skip = [
+  { name = "syn" },
+  { name = "windows-sys" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git      = "deny"
+allow-registry   = ["https://github.com/rust-lang/crates.io-index"]
+allow-git        = []

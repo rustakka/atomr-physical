@@ -1,0 +1,33 @@
+[package]
+name          = "atomr-physical-ros2"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+homepage      = { workspace = true }
+authors       = { workspace = true }
+description   = "ROS2 bridge for atomr-physical: maps sensor/actuator/robot actors onto the ROS2 topic, service, and action graph."
+
+keywords      = ["ros2", "robotics", "atomr", "actor", "bridge"]
+categories    = ["science::robotics", "asynchronous"]
+readme        = "../../README.md"
+
+[dependencies]
+atomr-physical-core      = { workspace = true }
+atomr-physical-sensing   = { workspace = true }
+atomr-physical-actuation = { workspace = true }
+atomr-physical-robotics  = { workspace = true }
+atomr-core               = { workspace = true }
+serde                    = { workspace = true }
+tokio                    = { workspace = true }
+tracing                  = { workspace = true }
+
+[features]
+default = []
+# Phase 2: links the `rclrs` ROS2 client library and implements
+# `Ros2Bridge::spin` against a live ROS2 graph. Requires a ROS2
+# installation (and `rosidl` message generation) on the build host, so
+# it is opt-in and off by default — the workspace builds with no ROS2
+# toolchain present.
+rclrs = []

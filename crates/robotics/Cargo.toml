@@ -1,0 +1,26 @@
+[package]
+name          = "atomr-physical-robotics"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+homepage      = { workspace = true }
+authors       = { workspace = true }
+description   = "Robot-level orchestration for atomr-physical: joints, kinematic models, and the RobotActor that supervises a tree of sensor and actuator actors."
+
+keywords      = ["robotics", "atomr", "actor", "ros2", "control"]
+categories    = ["science::robotics", "asynchronous"]
+readme        = "../../README.md"
+
+[dependencies]
+atomr-physical-core      = { workspace = true }
+atomr-physical-sensing   = { workspace = true }
+atomr-physical-actuation = { workspace = true }
+atomr-core               = { workspace = true }
+serde                    = { workspace = true }
+tokio                    = { workspace = true }
+tracing                  = { workspace = true }
+
+[dev-dependencies]
+atomr-physical-testkit = { workspace = true }
