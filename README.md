@@ -130,7 +130,7 @@ already pays.
 | `atomr-physical-sensing` | `SensorActor` — adapts a `Sensor` driver into a supervised actor with a `SamplingPolicy` and linear `Calibration` |
 | `atomr-physical-actuation` | `ActuatorActor` — adapts an `Actuator` driver into a supervised actor that enforces a `SafetyEnvelope` (clamp or reject) before dispatch |
 | `atomr-physical-robotics` | `RobotActor` — the supervisor at the top of a physical system; `Joint`, `RobotModel`, and the kinematic structure a robot exposes |
-| `atomr-physical-ros2` | The ROS2 bridge: `Ros2Endpoint`, `TopicMap`, `Ros2Bridge` — maps device actors onto the ROS2 topic graph; `rclrs` feature drives a live graph |
+| `atomr-physical-ros2` | The ROS2 bridge — four layers: the offline plan (`Ros2Plan`, `TopicMap`, QoS, validation), the extensible codec registry, the transport contract (`Ros2Event` / `Ros2Command`, with a `MockRos2Transport`), and the Model 2 orchestration actors (`Ros2NodeActor` + one actor per endpoint). `rclrs` feature drives a live ROS 2 Jazzy graph |
 | `atomr-physical-testkit` | `MockSensor` / `MockActuator` implementing the device-contract traits with in-memory behaviour, for hardware-free tests |
 | `atomr-physical-py-bindings` | `atomr_physical._native` PyO3 module — six submodules exposing the value types and device contract to Python |
 | `atomr-physical-cli` | `atomr-physical` binary: `devices` / `sense` / `actuate` / `ros2` subcommands |
@@ -199,13 +199,17 @@ print(envelope.enforce("joint-0", 3.0))   # 1.57 — clamped to the envelope
 
 ## ROS2 integration
 
-The `atomr-physical-ros2` crate is the seam onto the ROS2 graph. It is
-transport-agnostic and builds with **no ROS2 installation** — you
-declare a `TopicMap` binding each device to a `Ros2Endpoint`, and the
-plan is inspectable and unit-testable offline. The `rclrs` feature
-(Phase 2) links the [`rclrs`](https://github.com/ros2-rust/ros2_rust)
-client library and spins the bridge against a live ROS2 graph. See
-[`docs/ros2-bridge.md`](docs/ros2-bridge.md).
+The `atomr-physical-ros2` crate **orchestrates inputs and outputs across
+the ROS2 graph through idiomatic atomr actor patterns** — it does not
+reimplement ROS2. It builds with **no ROS2 installation**: you declare a
+`Ros2Plan` (topics, services, actions, parameters, each with a
+`QosProfile`), `validate` it, encode through the extensible
+`CodecRegistry`, and run the Model 2 orchestration actors against the
+in-memory `MockRos2Transport` — all inspectable and unit-testable
+offline. The `rclrs` feature links the
+[`rclrs`](https://github.com/ros2-rust/ros2_rust) client library and
+`Ros2Bridge::run` spins the bridge against a live ROS 2 Jazzy graph. See
+[`docs/ros2-bridge.md`](docs/ros2-bridge.md) for the full specification.
 
 ## Documentation map
 

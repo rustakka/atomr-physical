@@ -71,6 +71,13 @@ if _native is not None:
 
     Ros2Endpoint = ros2.Ros2Endpoint
     TopicMap = ros2.TopicMap
+    Ros2Plan = ros2.Ros2Plan
+    Ros2ServiceEndpoint = ros2.Ros2ServiceEndpoint
+    Ros2ActionEndpoint = ros2.Ros2ActionEndpoint
+    Ros2ParamDecl = ros2.Ros2ParamDecl
+    QosProfile = ros2.QosProfile
+    Ros2ClockSource = ros2.Ros2ClockSource
+    CodecRegistry = ros2.CodecRegistry
 
 try:
     __version__ = _metadata.version("atomr-physical")
@@ -102,4 +109,11 @@ __all__ = [
     # ros2
     "Ros2Endpoint",
     "TopicMap",
+    "Ros2Plan",
+    "Ros2ServiceEndpoint",
+    "Ros2ActionEndpoint",
+    "Ros2ParamDecl",
+    "QosProfile",
+    "Ros2ClockSource",
+    "CodecRegistry",
 ]

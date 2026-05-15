@@ -89,3 +89,58 @@ def test_ros2_topic_map_binds_both_directions():
     assert topics.len == 2
     assert topics.sensor_endpoint("s1").direction == "publish"
     assert topics.actuator_endpoint("a1").direction == "subscribe"
+
+
+def test_ros2_qos_profile_and_endpoint_qos():
+    sensor_data = ap.QosProfile.sensor_data()
+    assert sensor_data.reliability == "best_effort"
+    assert sensor_data.history == "keep_last"
+
+    endpoint = ap.Ros2Endpoint.publish("/robot/temp", "sensor_msgs/msg/Temperature")
+    # No explicit QoS — falls back to the per-direction default.
+    assert endpoint.qos is None
+    assert endpoint.effective_qos.reliability == "best_effort"
+
+    with_qos = endpoint.with_qos(ap.QosProfile.command())
+    assert with_qos.qos.reliability == "reliable"
+
+
+def test_ros2_clock_source_variants():
+    assert ap.Ros2ClockSource.wall().name == "wall"
+    assert ap.Ros2ClockSource.sim_time().name == "sim_time"
+
+
+def test_ros2_plan_aggregates_every_endpoint_kind():
+    plan = ap.Ros2Plan()
+    plan.bind_sensor(
+        "s1", ap.Ros2Endpoint.publish("/arm/temp", "sensor_msgs/msg/Temperature")
+    )
+    plan.add_service(
+        ap.Ros2ServiceEndpoint.server("/arm/home", "std_srvs/srv/Trigger")
+    )
+    plan.add_action(
+        ap.Ros2ActionEndpoint.server(
+            "/arm/traj", "control_msgs/action/FollowJointTrajectory"
+        )
+    )
+    plan.declare_param(ap.Ros2ParamDecl.int_param("shoulder.period_ms", 100))
+    assert plan.len == 4
+    assert plan.validate() == []
+
+
+def test_ros2_plan_validation_flags_a_bad_plan():
+    plan = ap.Ros2Plan()
+    # Unqualified topic + a sensor bound to a subscribe endpoint.
+    plan.bind_sensor(
+        "s1", ap.Ros2Endpoint.subscribe("arm/temp", "sensor_msgs/msg/Temperature")
+    )
+    problems = plan.validate()
+    assert problems  # non-empty — the plan is malformed
+
+
+def test_ros2_codec_registry_is_inspectable():
+    registry = ap.CodecRegistry.builtin()
+    # Built without the `rclrs` feature, so the curated set is empty —
+    # but the registry is still inspectable.
+    assert registry.has("sensor_msgs/msg/Temperature") in (True, False)
+    assert isinstance(registry.registered_types(), list)

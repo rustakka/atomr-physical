@@ -1,7 +1,7 @@
 //! Test doubles for atomr-physical.
 //!
 //! [`MockSensor`] and [`MockActuator`] implement the
-//! [`atomr_physical_core::Sensor`] / [`Actuator`](atomr_physical_core::Actuator)
+//! [`atomr_physical_core::Sensor`] / [`atomr_physical_core::Actuator`]
 //! contract traits with in-memory behaviour, so sensing, actuation, and
 //! robotics code can be exercised without hardware or a ROS2 graph.
 

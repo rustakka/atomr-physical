@@ -7,14 +7,16 @@
 //! binding convention — one native submodule per Rust crate, with a
 //! thin pure-Python facade over each in `python/atomr_physical/`):
 //!
-//! - `atomr_physical._native.errors`    — exception hierarchy
-//! - `atomr_physical._native.core`      — `Quantity`, `Reading`,
-//!                                        `Command`, `CommandAck`,
-//!                                        `DeviceDescriptor`
-//! - `atomr_physical._native.sensing`   — `SamplingPolicy`, `Calibration`
+//! - `atomr_physical._native.errors` — exception hierarchy
+//! - `atomr_physical._native.core` — `Quantity`, `Reading`, `Command`,
+//!   `CommandAck`, `DeviceDescriptor`
+//! - `atomr_physical._native.sensing` — `SamplingPolicy`, `Calibration`
 //! - `atomr_physical._native.actuation` — `SafetyEnvelope`
-//! - `atomr_physical._native.robotics`  — `Joint`, `RobotModel`
-//! - `atomr_physical._native.ros2`      — `Ros2Endpoint`, `TopicMap`
+//! - `atomr_physical._native.robotics` — `Joint`, `RobotModel`
+//! - `atomr_physical._native.ros2` — the offline ROS2 plan:
+//!   `Ros2Endpoint`, `TopicMap`, `Ros2Plan`, `Ros2ServiceEndpoint`,
+//!   `Ros2ActionEndpoint`, `Ros2ParamDecl`, `QosProfile`,
+//!   `Ros2ClockSource`, and a read-only `CodecRegistry` view
 //!
 //! Each submodule's `register` fn creates a Python submodule, registers
 //! its `#[pyclass]`es, and attaches it to the parent — the same pattern

@@ -1,11 +1,12 @@
 //! `atomr-physical` — operate the physical layer from the command line.
 //!
-//! The subcommands are scaffolded: each prints the plan it would carry
-//! out and the crate APIs it would call. They are wired to real device
-//! registries and the ROS2 bridge as the corresponding subsystems land
-//! (see the per-command notes and `docs/architecture.md`).
+//! The `devices` / `sense` / `actuate` subcommands are scaffolded: each
+//! prints the plan it would carry out and the crate APIs it would call,
+//! pending a device registry to back the CLI. The `ros2 codecs`
+//! subcommand is live — it inspects the real codec registry.
 
 use anyhow::Result;
+use atomr_physical_ros2::{unit_constraint, CodecRegistry, UnitConstraint};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -56,6 +57,8 @@ enum Ros2Cmd {
         /// The robot id to plan a node graph for.
         robot: String,
     },
+    /// List the message-codec registry and the unit-compatibility table.
+    Codecs,
     /// Spin the ROS2 bridge for a robot (requires the `rclrs` feature).
     Spin {
         /// The robot id to bridge onto a ROS2 node.
@@ -100,18 +103,51 @@ fn main() -> Result<()> {
             Ros2Cmd::Plan { robot } => {
                 println!("ros2 plan {robot}");
                 println!(
-                    "  (stub — builds the `Ros2Bridge` `TopicMap` for {robot:?} and prints \
-                     each sensor/actuator endpoint)"
+                    "  (stub — builds the `Ros2Bridge` `Ros2Plan` for {robot:?} and prints \
+                     each topic / service / action / parameter endpoint, once a device \
+                     registry backs the CLI)"
                 );
             }
+            Ros2Cmd::Codecs => print_codecs(),
             Ros2Cmd::Spin { robot } => {
                 println!("ros2 spin {robot}");
                 println!(
-                    "  (stub — calls `Ros2Bridge::spin`; returns `PhysicalError::Ros2Bridge` \
-                     unless built with `--features atomr-physical-ros2/rclrs`)"
+                    "  (stub — calls `Ros2Bridge::run`; returns `PhysicalError::Ros2Bridge` \
+                     unless built with `--features atomr-physical-ros2/rclrs` on a ROS 2 \
+                     Jazzy host)"
                 );
             }
         },
     }
     Ok(())
+}
+
+/// Print the codec registry and the `Unit` ↔ message-type table.
+fn print_codecs() {
+    let registry = CodecRegistry::builtin();
+    let mut types: Vec<&str> = registry.registered_types().collect();
+    types.sort_unstable();
+
+    println!("registered codecs ({}):", registry.len());
+    for message_type in &types {
+        println!("  {message_type:<34}  {}", describe_units(message_type));
+    }
+    println!();
+    println!(
+        "the `rclrs` transport materialises each structured payload into a concrete\n\
+         rosidl message at the wire; downstream crates add codecs via \
+         `CodecRegistry::register`."
+    );
+}
+
+/// A one-line description of a message type's unit constraint.
+fn describe_units(message_type: &str) -> String {
+    match unit_constraint(message_type) {
+        UnitConstraint::Any => "any unit".to_string(),
+        UnitConstraint::OneOf(units) => {
+            let names: Vec<&str> = units.iter().map(|u| u.symbol()).collect();
+            format!("units: {}", names.join(", "))
+        }
+        UnitConstraint::Unlisted => "no unit constraint listed".to_string(),
+    }
 }

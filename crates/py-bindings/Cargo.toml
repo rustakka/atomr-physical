@@ -26,3 +26,10 @@ atomr-physical-actuation = { workspace = true }
 atomr-physical-robotics  = { workspace = true }
 atomr-physical-ros2      = { workspace = true }
 pyo3                     = { workspace = true, features = ["extension-module"] }
+
+[lints.rust]
+# pyo3 0.22's `#[pymodule]` / `create_exception!` macros expand to code
+# gated on `#[cfg(feature = "gil-refs")]` — a pyo3-internal feature this
+# crate neither declares nor should. Declare the cfg as expected so the
+# `-D warnings` gates (rustdoc, clippy) stay clean.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("gil-refs"))'] }

@@ -52,11 +52,28 @@ child `SensorActor`s / `ActuatorActor`s keyed by id.
 
 ### `atomr-physical-ros2` — the bridge
 
-Maps the actor graph onto the ROS2 topic graph. `TopicMap` binds each
-device to a `Ros2Endpoint` (topic name + message type + direction);
-`Ros2Bridge` owns the node name and topic plan. The crate is
-transport-agnostic and builds with no ROS2 installation — see
-[ros2-bridge.md](ros2-bridge.md).
+Orchestrates inputs and outputs across the ROS2 graph through idiomatic
+atomr actor patterns. It is a **four-layer** design:
+
+- **Offline plan** — `Ros2Plan` aggregates `TopicMap` (pub/sub
+  endpoints), service / action endpoints, and parameter declarations,
+  each carrying an optional `QosProfile`. `Ros2Bridge` owns the plan;
+  `validate_plan` lints it. Pure data — builds with no ROS2 toolchain.
+- **Codec** — the `MessageCodec` trait and a downstream-extensible
+  `CodecRegistry` map a `message_type` string to an encode/decode
+  implementation; concrete `rosidl`-typed codecs are `rclrs`-gated.
+- **Transport contract** — the `Ros2Event` / `Ros2Command` channel
+  enums, the `Ros2Link` handle, and the `Ros2Transport` seam (the live
+  `rclrs` transport, or the in-memory `MockRos2Transport`).
+- **Orchestration** — Model 2: `Ros2NodeActor` supervises one actor per
+  endpoint (`Ros2PublisherActor` / `Ros2SubscriberActor`, with service /
+  action / parameter actors landing alongside their live counterparts).
+  The device seam (`ReadingSource` / `CommandSink`) decouples the bridge
+  from the still-scaffolded `SensorActor` / `ActuatorActor`.
+
+The crate builds with no ROS2 installation; the `rclrs` feature links
+the live transport. See [ros2-bridge.md](ros2-bridge.md) for the full
+specification.
 
 ### `atomr-physical-testkit` — the test doubles
 
@@ -110,12 +127,25 @@ wiring is scaffolded with explicit `Phase 2` markers in the source:
 | `SensorActor` as a live atomr `Actor` | the sampling loop runs under supervision; `Reading`s flow over a mailbox / event channel |
 | `ActuatorActor` as a live atomr `Actor` | commands arrive over a mailbox; the queue drains under supervision |
 | `RobotActor` as a supervisor | each child sensor / actuator runs supervised; a driver fault restarts only its subtree |
-| `Ros2Bridge::spin` behind the `rclrs` feature | the bridge creates an `rclrs` node and wires real publishers / subscriptions from the `TopicMap` |
 
 The seam is deliberate: today's types are usable directly (a
 `SensorActor` exposes `sample`, an `ActuatorActor` exposes `dispatch`),
 so callers and the Python overlay can be built against the API ahead of
 the supervision wiring.
+
+### ROS2 bridge buildout
+
+The ROS2 bridge follows its own ten-increment roadmap (see
+[ros2-bridge.md](ros2-bridge.md) §11). The **offline layers** —
+Increments 1–4 — have landed: the plan, QoS, validation, the codec
+trait + extensible registry, the transport contract, the
+`MockRos2Transport`, and the Model 2 topic-path actors (`Ros2NodeActor`
+/ `Ros2PublisherActor` / `Ros2SubscriberActor`), all compiled and
+tested with no ROS2 toolchain. The **`rclrs`-gated layers** —
+Increments 5–9 — wire the live transport core, the concrete codecs, and
+the service / parameter / action paths against a ROS 2 Jazzy host. The
+ROS2-bridge buildout does **not** block on the `SensorActor` /
+`ActuatorActor` actor wiring above — the device seam absorbs it.
 
 ## Dependency on atomr
 

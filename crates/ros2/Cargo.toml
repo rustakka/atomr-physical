@@ -19,15 +19,37 @@ atomr-physical-sensing   = { workspace = true }
 atomr-physical-actuation = { workspace = true }
 atomr-physical-robotics  = { workspace = true }
 atomr-core               = { workspace = true }
+async-trait              = { workspace = true }
 serde                    = { workspace = true }
+serde_json               = { workspace = true }
 tokio                    = { workspace = true }
 tracing                  = { workspace = true }
+thiserror                = { workspace = true }
+
+# --- `rclrs` feature: the live ROS 2 transport ----------------------
+# `rclrs` and the `rosidl`-generated message crates are not published on
+# crates.io — they resolve only through the host-local `.cargo/config.toml`
+# `[patch]` table on a ROS 2 Jazzy host (see docs/ros2-bridge.md §9).
+# They are `optional` and gated behind the `rclrs` feature, so the
+# workspace builds with no ROS 2 toolchain when the feature is off.
+rclrs         = { version = "0.7", optional = true }
+std_msgs      = { version = "*",   optional = true, features = ["serde"] }
+sensor_msgs   = { version = "*",   optional = true, features = ["serde"] }
+geometry_msgs = { version = "*",   optional = true, features = ["serde"] }
+std_srvs      = { version = "*",   optional = true, features = ["serde"] }
+
+[dev-dependencies]
+atomr-physical-testkit = { workspace = true }
 
 [features]
 default = []
-# Phase 2: links the `rclrs` ROS2 client library and implements
-# `Ros2Bridge::spin` against a live ROS2 graph. Requires a ROS2
-# installation (and `rosidl` message generation) on the build host, so
-# it is opt-in and off by default — the workspace builds with no ROS2
-# toolchain present.
-rclrs = []
+# Links the live `rclrs` ROS 2 client library and the curated `rosidl`
+# message crates, and compiles `transport/rclrs.rs` + the concrete codec
+# materialisation. Requires a ROS 2 Jazzy host and the `.cargo/config.toml`
+# `[patch]` table (see docs/ros2-bridge.md §9); off by default so the
+# workspace — and CI — builds with no ROS 2 toolchain present.
+rclrs = ["dep:rclrs", "dep:std_msgs", "dep:sensor_msgs", "dep:geometry_msgs", "dep:std_srvs"]
+# Exposes the in-memory `MockRos2Transport` and the `MockReadingSource` /
+# `MockCommandSink` device-seam doubles for downstream test suites. The
+# crate's own tests get them via `cfg(test)` without enabling this.
+mock = []

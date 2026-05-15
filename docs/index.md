@@ -88,6 +88,7 @@ in the source — see [architecture.md](architecture.md).
 
 - [Architecture](architecture.md) — crate stack, the device-actor model, the Phase-2 roadmap.
 - [ROS2 bridge](ros2-bridge.md) — the topic-graph mapping and the `rclrs` feature.
+- [ROS2 bridge — progress](ros2-bridge-progress.md) — increment-by-increment build status: what's done, in flight, and next.
 - [Python API](python-api.md) — the `atomr_physical.*` module map and the native-overlay pattern.
 - [Feature matrix](feature-matrix.md) — every feature flag and what it pulls in.
 - [Release pipeline](release-pipeline.md) / [Release process](release-process.md) — the release pipeline (currently manual-only).

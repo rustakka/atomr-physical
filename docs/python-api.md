@@ -33,7 +33,7 @@ atomr-physical's Python support follows the same three-layer pattern
 | `atomr_physical.sensing` | `_native.sensing` | `SamplingPolicy`, `Calibration` |
 | `atomr_physical.actuation` | `_native.actuation` | `SafetyEnvelope` |
 | `atomr_physical.robotics` | `_native.robotics` | `Joint`, `RobotModel` |
-| `atomr_physical.ros2` | `_native.ros2` | `Ros2Endpoint`, `TopicMap` |
+| `atomr_physical.ros2` | `_native.ros2` | the offline ROS2 plan: `Ros2Endpoint`, `TopicMap`, `Ros2Plan`, `Ros2ServiceEndpoint`, `Ros2ActionEndpoint`, `Ros2ParamDecl`, `QosProfile`, `Ros2ClockSource`, and a read-only `CodecRegistry` view |
 
 The top-level package re-exports the most-used classes, so
 `from atomr_physical import Quantity, RobotModel, SafetyEnvelope` works

@@ -5,7 +5,8 @@
 //! This umbrella crate re-exports each subsystem behind a feature flag,
 //! mirroring the convention used by the `atomr` and `atomr-agents`
 //! umbrellas. [`core`] is always present; [`sensing`], [`actuation`],
-//! [`robotics`], [`ros2`], and [`testkit`] are opt-in.
+//! [`robotics`], `ros2`, and `testkit` are opt-in (the last two are
+//! only present, hence only linkable, with their features enabled).
 //!
 //! ```toml
 //! [dependencies]

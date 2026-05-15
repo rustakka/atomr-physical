@@ -26,7 +26,8 @@ toolchain required.
 
 | Feature | Default | Effect |
 |---|:---:|---|
-| `rclrs` | — | Links the [`rclrs`](https://github.com/ros2-rust/ros2_rust) ROS2 client library and implements `Ros2Bridge::spin` against a live graph. **Requires a ROS2 installation** (and `rosidl` message generation) on the build host. Off by default so the workspace builds anywhere. |
+| `rclrs` | — | Links the [`rclrs`](https://github.com/ros2-rust/ros2_rust) ROS2 client library and the live transport core, concrete `rosidl`-typed codecs, and service / parameter / action paths. **Requires a ROS 2 Jazzy installation** (and `rosidl` message generation) on the build host. Off by default so the workspace builds anywhere. |
+| `mock` | — | Exposes the in-memory `MockRos2Transport` and the `MockReadingSource` / `MockCommandSink` device-seam doubles for **downstream** test suites. The crate's own tests get them via `cfg(test)` without this. Pure Rust — no ROS2 toolchain. |
 
 No other crate carries optional features at 0.1.0.
 
@@ -55,4 +56,6 @@ atomr-physical = { version = "0.1", features = ["testkit"] }
 `cargo build -p atomr-physical --all-features` would enable `rclrs`,
 which fails on a host with no ROS2 toolchain. The CI `feature-flags`
 job exercises `--features full` instead; the `rclrs` bridge is checked
-separately on a ROS2-equipped runner.
+separately on a ROS 2 Jazzy runner by the `workflow_dispatch`-only
+`rclrs-bridge` job (see `.github/workflows/ci.yml`), invoked through
+`cargo xtask ros2-it`.

@@ -16,6 +16,11 @@ readme        = "../../README.md"
 [[bin]]
 name = "atomr-physical"
 path = "src/main.rs"
+# The binary normalises to `atomr_physical`, colliding with the umbrella
+# crate's lib doc target under `cargo doc --workspace`. A CLI binary has
+# no rustdoc API surface — its interface is `--help` and docs/ — so skip
+# rustdoc for it and let the umbrella own that doc path.
+doc = false
 
 [dependencies]
 atomr-physical-core      = { workspace = true }
@@ -28,3 +33,9 @@ tokio                    = { workspace = true }
 anyhow                   = { workspace = true }
 tracing                  = { workspace = true }
 tracing-subscriber       = { workspace = true }
+
+[features]
+default = []
+# Build the CLI against the live ROS2 bridge — `ros2 spin` drives a real
+# `rclrs` node. Requires a ROS 2 Jazzy toolchain on the build host.
+rclrs = ["atomr-physical-ros2/rclrs"]

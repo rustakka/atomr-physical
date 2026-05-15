@@ -103,3 +103,25 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo doc --workspace --no-deps
         run: cargo doc --workspace --no-deps
+
+  rclrs-bridge:
+    name: rclrs bridge (ROS 2 Jazzy)
+    # The `rclrs` feature needs a ROS 2 toolchain, so this job runs in a
+    # ROS 2 Jazzy container — never on the plain `ubuntu-latest` runners
+    # the other jobs use. Like the rest of this workflow it is
+    # `workflow_dispatch`-only: it runs when an operator triggers it,
+    # which is the "checked separately on a ROS2-equipped runner" stance
+    # docs/feature-matrix.md and docs/ros2-bridge.md describe.
+    runs-on: ubuntu-latest
+    container: ros:jazzy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo xtask ros2-it
+        # Sources the ROS 2 environment, then runs the rclrs-gated
+        # integration tests via the xtask helper.
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          cargo xtask ros2-it

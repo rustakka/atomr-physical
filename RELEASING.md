@@ -112,8 +112,10 @@ gh workflow run version-bump.yml -f release_as=0.1.0
 Before tagging a release, run the pre-flight locally:
 
 ```bash
-# 1. Workspace builds clean.
-cargo check --workspace --all-features
+# 1. Workspace builds clean. Use `--features full`, not
+#    `--all-features`: the latter pulls `rclrs`, which needs a ROS 2
+#    toolchain a release host need not have.
+cargo check --workspace --features full
 
 # 2. All tests pass.
 cargo test --workspace
@@ -129,6 +131,9 @@ cargo doc --workspace --no-deps
 cargo build -p atomr-physical
 cargo build -p atomr-physical --no-default-features
 cargo build -p atomr-physical --features full
+
+# 6. On a ROS 2 Jazzy host only — the rclrs bridge.
+#    source /opt/ros/jazzy/setup.bash && cargo xtask ros2-it
 ```
 
 `cargo xtask release-checklist` prints this list.
