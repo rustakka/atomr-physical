@@ -77,6 +77,7 @@ pyo3-async-runtimes = { version = "0.22", default-features = false, features = [
 # `~/.cargo/config.toml` rather than reintroducing path-deps.
 atomr           = "0.9.2"
 atomr-core      = "0.9.2"
+atomr-config    = "0.9.2"
 atomr-macros    = "0.9.2"
 atomr-telemetry = "0.9.2"
 atomr-streams   = "0.9.2"

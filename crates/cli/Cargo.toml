@@ -23,8 +23,15 @@ atomr-physical-sensing   = { workspace = true }
 atomr-physical-actuation = { workspace = true }
 atomr-physical-robotics  = { workspace = true }
 atomr-physical-ros2      = { workspace = true }
+atomr-physical-testkit   = { workspace = true }
 clap                     = { workspace = true }
 tokio                    = { workspace = true }
 anyhow                   = { workspace = true }
 tracing                  = { workspace = true }
 tracing-subscriber       = { workspace = true }
+
+[features]
+default = []
+# Forward the ros2 crate's `rclrs` feature so `atomr-physical ros2 spin`
+# can drive a live ROS2 graph when the binary is built with this flag.
+rclrs = ["atomr-physical-ros2/rclrs"]

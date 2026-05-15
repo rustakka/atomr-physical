@@ -23,11 +23,21 @@ serde                    = { workspace = true }
 tokio                    = { workspace = true }
 tracing                  = { workspace = true }
 
+# The `rclrs` client library lives behind the matching feature flag so
+# the rest of the workspace builds without a ROS 2 toolchain. With
+# `dyn_msg` enabled the bridge can construct publishers / subscriptions
+# from a topic-type **string** (the form `TopicMap` already stores) so
+# we don't need colcon-generated message crates to compile.
+rclrs   = { version = "0.7", optional = true }
+futures = { workspace = true, optional = true }
+
 [features]
 default = []
 # Phase 2: links the `rclrs` ROS2 client library and implements
 # `Ros2Bridge::spin` against a live ROS2 graph. Requires a ROS2
-# installation (and `rosidl` message generation) on the build host, so
-# it is opt-in and off by default — the workspace builds with no ROS2
-# toolchain present.
-rclrs = []
+# installation on the build host (sourced via
+# `~/ros2_jazzy/install/setup.bash` or `/opt/ros/<distro>/setup.bash`)
+# — the build script needs the `rcl` / `rmw` / `rosidl` headers and the
+# `dyn_msg` runtime needs the type-introspection `.so`s. Off by default
+# so the workspace still builds anywhere.
+rclrs = ["dep:rclrs", "dep:futures"]

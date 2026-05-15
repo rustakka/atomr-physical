@@ -7,20 +7,28 @@
 //! binding convention — one native submodule per Rust crate, with a
 //! thin pure-Python facade over each in `python/atomr_physical/`):
 //!
-//! - `atomr_physical._native.errors`    — exception hierarchy
-//! - `atomr_physical._native.core`      — `Quantity`, `Reading`,
-//!                                        `Command`, `CommandAck`,
-//!                                        `DeviceDescriptor`
-//! - `atomr_physical._native.sensing`   — `SamplingPolicy`, `Calibration`
+//! - `atomr_physical._native.errors` — exception hierarchy
+//! - `atomr_physical._native.core` — `Quantity`, `Reading`, `Command`,
+//!   `CommandAck`, `DeviceDescriptor`
+//! - `atomr_physical._native.sensing` — `SamplingPolicy`, `Calibration`
 //! - `atomr_physical._native.actuation` — `SafetyEnvelope`
-//! - `atomr_physical._native.robotics`  — `Joint`, `RobotModel`
-//! - `atomr_physical._native.ros2`      — `Ros2Endpoint`, `TopicMap`
+//! - `atomr_physical._native.robotics` — `Joint`, `RobotModel`
+//! - `atomr_physical._native.ros2` — `Ros2Endpoint`, `TopicMap`
 //!
 //! Each submodule's `register` fn creates a Python submodule, registers
 //! its `#[pyclass]`es, and attaches it to the parent — the same pattern
 //! `atomr-agents-py-bindings` uses.
 
-#![allow(non_local_definitions)] // pyo3 macros emit local impls in modules.
+#![allow(non_local_definitions)]
+// pyo3 macros emit local impls in modules.
+// pyo3 0.22 macros emit `#[cfg(feature = "gil-refs")]` referring to a
+// downstream-removed feature; silence the resulting unexpected-cfg
+// warnings until we bump pyo3.
+#![allow(unexpected_cfgs)]
+// pyo3 0.22's `#[pyfunction]` / `#[pymethods]` expansion wraps PyResult
+// returns through `From::from`, which clippy reads as a useless
+// conversion. Allowed crate-wide until we bump pyo3.
+#![allow(clippy::useless_conversion)]
 
 use pyo3::prelude::*;
 

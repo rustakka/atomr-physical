@@ -26,9 +26,15 @@ toolchain required.
 
 | Feature | Default | Effect |
 |---|:---:|---|
-| `rclrs` | — | Links the [`rclrs`](https://github.com/ros2-rust/ros2_rust) ROS2 client library and implements `Ros2Bridge::spin` against a live graph. **Requires a ROS2 installation** (and `rosidl` message generation) on the build host. Off by default so the workspace builds anywhere. |
+| `rclrs` | — | Links the [`rclrs`](https://github.com/ros2-rust/ros2_rust) ROS 2 client library at version 0.7 plus the `futures` runtime, and implements `Ros2Bridge::spin` against a live graph using rclrs's **dynamic-message** API — every endpoint's `message_type` string drives a runtime publisher / subscription, so colcon-generated Rust message crates are **not** required. Needs a sourced ROS 2 environment (`AMENT_PREFIX_PATH` populated) so the linker finds `librcl` / `librmw` and the runtime can dlopen the introspection `.so`s. Off by default so the workspace builds anywhere. |
 
-No other crate carries optional features at 0.1.0.
+### `atomr-physical-cli`
+
+| Feature | Default | Effect |
+|---|:---:|---|
+| `rclrs` | — | Forwards to `atomr-physical-ros2/rclrs` so `atomr-physical ros2 spin` drives a live ROS 2 graph. |
+
+No other crate carries optional features today.
 
 ## Canonical shapes
 
@@ -53,6 +59,15 @@ atomr-physical = { version = "0.1", features = ["testkit"] }
 ## CI note
 
 `cargo build -p atomr-physical --all-features` would enable `rclrs`,
-which fails on a host with no ROS2 toolchain. The CI `feature-flags`
+which fails on a host with no ROS 2 toolchain. The CI `feature-flags`
 job exercises `--features full` instead; the `rclrs` bridge is checked
-separately on a ROS2-equipped runner.
+separately on a ROS 2-equipped runner. The runner needs:
+
+- `librcl` / `librmw` / an `rmw_implementation` reachable via
+  `AMENT_PREFIX_PATH`,
+- the type-introspection `.so` for every `message_type` the bridge's
+  tests reference (`std_msgs`, `sensor_msgs`, `geometry_msgs`,
+  `builtin_interfaces`, `rosgraph_msgs`, `action_msgs`,
+  `rcl_interfaces` cover everything in the repo today),
+- and the build environment sourced via `setup.bash` before
+  `cargo test -p atomr-physical-ros2 --features rclrs`.

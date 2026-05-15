@@ -82,19 +82,23 @@ except OutOfRange as e:
     print("rejected:", e)
 ```
 
-## What's exposed at 0.1.0
+## What's exposed today
 
 The Python overlay covers the **value types and the device contract** —
 quantities, readings, commands, descriptors, the safety / calibration
 policies, the kinematic model, and the ROS2 topic plan. These are the
 types a Python caller constructs, inspects, and asserts on.
 
-The **live actor surface** (driving a `SensorActor` sampling loop or an
-`ActuatorActor` queue from Python, async coroutines over
-`pyo3-async-runtimes`) lands alongside the Phase-2 actor wiring
-described in [architecture.md](architecture.md). The facade layout is
-already shaped for it — new native classes slot into the existing
-submodules and their `.py` facades pick them up automatically.
+The Rust side now has a full **live actor surface** (`SensorActor`,
+`ActuatorActor`, and `RobotActor` each expose `.spawn(system, name)` →
+typed `*Ref` over a mailbox; the `rclrs` feature spins a real ROS 2
+node — see [architecture.md](architecture.md)). The Python facade
+layout is already shaped to grow into it: new native classes slot into
+the existing submodules and their `.py` facades pick them up
+automatically. The supervised surface (`Sensor/Actuator/RobotActorRef`
++ async `sample` / `dispatch` over `pyo3-async-runtimes`) is the next
+binding addition — the facade layout makes adding it an additive
+change rather than a rewrite.
 
 ## Adding a binding
 

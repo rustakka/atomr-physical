@@ -78,11 +78,14 @@ python -c "from atomr_physical import Quantity; print(Quantity(1.0, 'rad'))"
 
 ## Project status
 
-atomr-physical is at **0.1.0**. The workspace structure, device-contract
-traits, value types, safety / calibration policies, the offline ROS2
-topic-graph plan, and the Python overlay are in place and tested. The
-actor-runtime wiring and the `rclrs` live bridge are marked **Phase 2**
-in the source — see [architecture.md](architecture.md).
+atomr-physical's Phase 2 has landed. Every device type has both an
+**offline** form (direct `sample` / `dispatch`, no runtime) and a
+**supervised** form (`.spawn(system, name)` returns a typed `*Ref`
+backed by a real atomr actor under a one-for-one supervisor). The
+`rclrs` feature spins a live ROS 2 node with dynamic publishers /
+subscriptions built from the `TopicMap`. The Python overlay rides on
+the same value types, unchanged. See
+[architecture.md](architecture.md) for the full lifecycle.
 
 ## Documentation map
 

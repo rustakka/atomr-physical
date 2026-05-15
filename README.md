@@ -24,12 +24,22 @@ let temp = SensorActor::new(driver, SamplingPolicy::default_rate())
 let servo = ActuatorActor::new(servo_driver)
     .with_envelope(SafetyEnvelope::clamping(-1.57, 1.57));
 
-let reading = temp.sample().await?;
-let ack = servo.dispatch(Command::now(
+// Direct form: no runtime, hardware-free tests.
+let reading = temp.clone().sample().await?;
+let ack = servo.clone().dispatch(Command::now(
     ActuatorId::from("joint-0"),
     ControlMode::Position,
     Quantity::new(0.8, Unit::Radian),
 )).await?;
+
+// Supervised form: promote to live atomr actors under a system.
+let system = ActorSystem::create("robot", Config::reference()).await?;
+let temp_ref = temp.spawn(&system, "imu-temp")?;
+let servo_ref = servo.spawn(&system, "joint-0")?;
+// Subscribe to the periodic sampling loop's broadcast fan-out.
+let mut stream = temp_ref.subscribe();
+let reading = temp_ref.sample().await?;
+let ack = servo_ref.dispatch(Command::now(/* … */)).await?;
 ```
 
 ## Python parity
@@ -139,13 +149,14 @@ Plus a Python facade — `pip install atomr-physical` — that exposes the
 same `Quantity` / `Reading` / `Command` / `SafetyEnvelope` /
 `RobotModel` / `TopicMap` shapes from Python.
 
-> **Project status.** atomr-physical is at **0.1.0** — the workspace
-> structure, the device-contract traits, the value types, the safety
-> and calibration policies, the ROS2 topic-graph plan, and the Python
-> overlay are in place. The actor-runtime wiring (`SensorActor` /
-> `ActuatorActor` / `RobotActor` as live atomr `Actor`s) and the
-> `rclrs` live-bridge are marked **Phase 2** in the source — see
-> `docs/architecture.md`.
+> **Project status.** atomr-physical's Phase 2 has landed: every
+> device type has both an offline form (direct `sample` / `dispatch`)
+> and a supervised form (`.spawn(system, name)` → typed `*Ref` over a
+> mailbox, with `RobotActor` standing up its children under a
+> one-for-one `SupervisorStrategy`). The `rclrs` feature now spins a
+> real ROS 2 node with dynamic publishers and subscriptions from the
+> `TopicMap`. See [`docs/architecture.md`](docs/architecture.md) for
+> the lifecycle details.
 
 ## Quick start (Rust)
 
@@ -154,8 +165,11 @@ same `Quantity` / `Reading` / `Command` / `SafetyEnvelope` /
 # Defaults: sensing + actuation + robotics
 atomr-physical = "0.1"
 
-# Add the ROS2 bridge and test doubles:
+# Add the ROS2 topic-graph bridge and test doubles:
 # atomr-physical = { version = "0.1", features = ["ros2", "testkit"] }
+
+# Drive the bridge against a *live* ROS2 graph (requires a ROS2 install):
+# atomr-physical = { version = "0.1", features = ["rclrs"] }
 ```
 
 Or pull subsystem crates directly — `atomr-physical-core`,
@@ -167,6 +181,7 @@ publishables.
 use std::sync::Arc;
 use atomr_physical::prelude::*;
 use atomr_physical::sensing::{SamplingPolicy, SensorActor};
+use atomr_physical::actor::actor::{ActorSystem, Config};
 use atomr_physical_testkit::MockSensor;
 
 # async fn run() -> atomr_physical::core::Result<()> {
@@ -175,8 +190,15 @@ use atomr_physical_testkit::MockSensor;
 let driver = Arc::new(MockSensor::constant("imu-temp", 21.0, Unit::Celsius));
 let sensor = SensorActor::new(driver, SamplingPolicy::default_rate());
 
-let reading = sensor.sample().await?;
+// Direct form (no runtime — handy in tests).
+let reading = sensor.clone().sample().await?;
 println!("{} = {}", reading.sensor, reading.quantity);
+
+// Supervised form (live atomr actor under a system).
+let system = ActorSystem::create("demo", Config::reference()).await.unwrap();
+let sensor_ref = sensor.spawn(&system, "imu-temp").unwrap();
+let mut stream = sensor_ref.subscribe();   // periodic readings on a broadcast channel
+let reading = sensor_ref.sample().await?;  // or ask-style one-shot reads
 # Ok(()) }
 ```
 

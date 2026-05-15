@@ -99,23 +99,61 @@ The `atomr-physical` binary: `devices`, `sense`, `actuate`, `ros2`.
 A driver is plain async Rust. The device crates supply the actor, the
 loop, the policy, and the supervision.
 
-## Phase-2 roadmap
+## Phase 2 — landed in 0.2.x
 
-atomr-physical 0.1.0 ships the structure, the contract, the value
-types, and the policies — all compiled and tested. The actor-runtime
-wiring is scaffolded with explicit `Phase 2` markers in the source:
+The actor-runtime wiring and the `rclrs` live bridge landed alongside
+the 0.2.x line. Every type below now has both an **offline** form
+(directly callable, no runtime) and a **supervised** form behind a
+`.spawn(...)` method that returns a typed `*Ref` handle:
 
-| Marker | Lands |
-|---|---|
-| `SensorActor` as a live atomr `Actor` | the sampling loop runs under supervision; `Reading`s flow over a mailbox / event channel |
-| `ActuatorActor` as a live atomr `Actor` | commands arrive over a mailbox; the queue drains under supervision |
-| `RobotActor` as a supervisor | each child sensor / actuator runs supervised; a driver fault restarts only its subtree |
-| `Ros2Bridge::spin` behind the `rclrs` feature | the bridge creates an `rclrs` node and wires real publishers / subscriptions from the `TopicMap` |
+| Surface | Offline (always available) | Supervised (`.spawn(system, …)`) |
+|---|---|---|
+| `SensorActor` | `sample().await` — direct calibrated read | `SensorActor::spawn` → `SensorActorRef` with `sample()`, `health_check()`, and a `broadcast::Receiver<Reading>` fed by the periodic sampling loop |
+| `ActuatorActor` | `dispatch(cmd).await` — envelope + driver | `ActuatorActor::spawn` → `ActuatorActorRef` with `dispatch()` and `health_check()`; commands serialise through the mailbox |
+| `RobotActor` | `add_sensor` / `add_actuator` + offline lookups | `RobotActor::spawn` → `RobotActorRef` with `sensor(id)` / `actuator(id)` / `child_ids()`; children spawned in `pre_start` under the supervisor's `OneForOneStrategy`, so a driver fault restarts only the affected subtree |
+| `Ros2Bridge` | `topics_mut().bind_*` — offline TopicMap | `Ros2Bridge::spin().await` — behind the `rclrs` feature, stands up a real ROS 2 node with a `DynamicPublisher` per sensor / `DynamicSubscription` per actuator and returns a `Ros2BridgeHandle` for `publish_reading` + `shutdown` |
 
-The seam is deliberate: today's types are usable directly (a
-`SensorActor` exposes `sample`, an `ActuatorActor` exposes `dispatch`),
-so callers and the Python overlay can be built against the API ahead of
-the supervision wiring.
+### Restart semantics
+
+`RobotRunner::pre_start` spawns each sensor / actuator child via
+`SensorActor::spawn_under(ctx, …)` / `ActuatorActor::spawn_under(ctx,
+…)`. Children are named `sensor-<id>` / `actuator-<id>` so the
+supervisor path stays predictable, and the supervisor's
+`SupervisorStrategy` (one-for-one with 10 retries / 60 s by default —
+configurable via `RobotActor::with_supervisor_strategy`) decides what
+to do on a driver fault.
+
+### The two-form contract
+
+The split is deliberate: the offline form is fast to construct, easy to
+test (no `tokio::test` overhead), and gives the Python overlay a
+hardware-free surface. The supervised form is the production path —
+backpressure, restart, and the broadcast fan-out come from atomr
+unchanged. Both share the same configuration types; promoting offline
+to supervised is a single `.spawn(system, name)` call.
+
+### The `rclrs` feature shape
+
+`Ros2Bridge` builds with **no ROS 2 toolchain**. Behind the `rclrs`
+feature it depends on `rclrs = "0.7"` and uses the dynamic-message API
+(no colcon-generated message crates required): each endpoint's
+`message_type` string drives a `DynamicPublisher` or
+`DynamicSubscription` at runtime. The bridge spins the executor in a
+tokio task and halts it via a `futures::oneshot` promise wired into
+`SpinOptions::until_promise_resolved` — drop the
+[`Ros2BridgeHandle`](https://docs.rs/atomr-physical-ros2/latest/atomr_physical_ros2/struct.Ros2BridgeHandle.html)
+or call `.shutdown().await` to take the node down cleanly.
+
+The `dyn_msg` path means the build needs:
+
+- `rcl`, `rmw`, an `rmw_implementation` (`rmw_cyclonedds_cpp` or
+  `rmw_fastrtps_cpp`), `rosidl_runtime_c`,
+  `rosidl_typesupport_introspection_c` from the ROS 2 install.
+- The introspection `.so` for every message type the `TopicMap`
+  references (e.g. `libstd_msgs__rosidl_typesupport_introspection_c.so`).
+- A sourced setup script — `source $HOME/ros2_jazzy/install/setup.bash`
+  for a from-source build, or `source /opt/ros/jazzy/setup.bash` for an
+  apt install — so `AMENT_PREFIX_PATH` is populated.
 
 ## Dependency on atomr
 

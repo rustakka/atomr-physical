@@ -20,7 +20,9 @@ atomr-physical-actuation = { workspace = true }
 atomr-core               = { workspace = true }
 serde                    = { workspace = true }
 tokio                    = { workspace = true }
+async-trait              = { workspace = true }
 tracing                  = { workspace = true }
 
 [dev-dependencies]
 atomr-physical-testkit = { workspace = true }
+atomr-config           = { workspace = true }
