@@ -25,7 +25,10 @@ mod units;
 pub use command::{Command, CommandAck, ControlMode};
 pub use device::{Actuator, Capability, Device, DeviceDescriptor, DeviceKind, Sensor};
 pub use error::{PhysicalError, Result};
-pub use ids::{ActuatorId, DeviceId, JointId, RobotId, SensorId};
+pub use ids::{
+    ActuatorId, ClientId, DeviceId, DisplayId, JointId, ProjectionId, RobotId, SensorId,
+    SunshineInstanceId,
+};
 pub use reading::{Reading, ReadingBatch};
 pub use units::{Quantity, Unit};
 

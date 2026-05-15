@@ -14,21 +14,23 @@ categories    = ["science::robotics", "asynchronous"]
 readme        = "../../README.md"
 
 [dependencies]
-atomr-physical-core      = { workspace = true }
-atomr-physical-sensing   = { workspace = true, optional = true }
-atomr-physical-actuation = { workspace = true, optional = true }
-atomr-physical-robotics  = { workspace = true, optional = true }
-atomr-physical-ros2      = { workspace = true, optional = true }
-atomr-physical-testkit   = { workspace = true, optional = true }
+atomr-physical-core       = { workspace = true }
+atomr-physical-sensing    = { workspace = true, optional = true }
+atomr-physical-actuation  = { workspace = true, optional = true }
+atomr-physical-robotics   = { workspace = true, optional = true }
+atomr-physical-ros2       = { workspace = true, optional = true }
+atomr-physical-projection = { workspace = true, optional = true }
+atomr-physical-testkit    = { workspace = true, optional = true }
 
 [features]
 default = ["sensing", "actuation", "robotics"]
-sensing   = ["dep:atomr-physical-sensing"]
-actuation = ["dep:atomr-physical-actuation"]
-robotics  = ["dep:atomr-physical-robotics", "sensing", "actuation"]
-ros2      = ["dep:atomr-physical-ros2", "robotics"]
-testkit   = ["dep:atomr-physical-testkit"]
+sensing    = ["dep:atomr-physical-sensing"]
+actuation  = ["dep:atomr-physical-actuation"]
+robotics   = ["dep:atomr-physical-robotics", "sensing", "actuation"]
+ros2       = ["dep:atomr-physical-ros2", "robotics"]
+projection = ["dep:atomr-physical-projection"]
+testkit    = ["dep:atomr-physical-testkit"]
 # `rclrs` forwards to the ros2 crate's live-bridge feature; it requires
 # a ROS2 installation on the build host.
-rclrs     = ["ros2", "atomr-physical-ros2/rclrs"]
-full      = ["sensing", "actuation", "robotics", "ros2", "testkit"]
+rclrs      = ["ros2", "atomr-physical-ros2/rclrs"]
+full       = ["sensing", "actuation", "robotics", "ros2", "projection", "testkit"]

@@ -1,0 +1,24 @@
+[Unit]
+Description=atomr-physical projection client (Moonlight)
+Documentation=https://github.com/rustakka/atomr-physical
+After=network-online.target avahi-daemon.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=RUST_LOG=info
+ExecStart=/usr/local/bin/atomr-projection-client run \
+  --service-filter atomr-.* \
+  --moonlight-bin /usr/bin/moonlight-embedded
+Restart=on-failure
+RestartSec=5s
+User=pi
+Group=pi
+# Multicast / mDNS need IPv4 multicast capability — uncomment on systems
+# where the daemon is started without CAP_NET_RAW:
+# AmbientCapabilities=CAP_NET_RAW
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

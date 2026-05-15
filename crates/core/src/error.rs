@@ -78,4 +78,56 @@ pub enum PhysicalError {
     /// Catch-all for driver / transport faults.
     #[error("device fault: {0}")]
     Fault(String),
+
+    /// A virtual display could not be brought up or torn down.
+    #[error("display {display} unavailable: {reason}")]
+    DisplayUnavailable {
+        /// The display id or connector name.
+        display: String,
+        /// Why the operation failed.
+        reason: String,
+    },
+
+    /// A Sunshine server process failed to spawn or terminated abnormally.
+    #[error("sunshine instance failed: {reason}")]
+    SunshineSpawn {
+        /// Driver / OS level explanation.
+        reason: String,
+    },
+
+    /// A remote Moonlight client could not be paired against a Sunshine
+    /// instance.
+    #[error("pairing rejected for {client}: {reason}")]
+    PairingRejected {
+        /// The client identifier or hostname.
+        client: String,
+        /// Why pairing was rejected.
+        reason: String,
+    },
+
+    /// Port allocation for a Sunshine instance failed (out of windows,
+    /// or all probed ports are occupied).
+    #[error("port allocation failed: need {needed} usable ports")]
+    PortExhausted {
+        /// How many ports the allocator was looking for.
+        needed: u16,
+    },
+
+    /// A required kernel module is not loaded and could not be loaded
+    /// automatically.
+    #[error("kernel module {module}: {reason}")]
+    KernelModule {
+        /// The module name (e.g. `vkms`).
+        module: &'static str,
+        /// Remediation guidance.
+        reason: String,
+    },
+
+    /// A remote node (Moonlight client / Pi / Jetson) could not be
+    /// reached or driven.
+    #[error("remote node error: {reason}")]
+    RemoteNode {
+        /// Transport-level explanation.
+        reason: String,
+    },
 }

@@ -20,12 +20,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use std::path::PathBuf;
+
 use anyhow::{Context, Result};
 use atomr_physical_actuation::{ActuatorActor, SafetyEnvelope};
 use atomr_physical_core::{
-    ActuatorId, Command, ControlMode, Device, DeviceDescriptor, DeviceKind, Quantity, Reading, RobotId,
-    SensorId, Unit,
+    ActuatorId, ClientId, Command, ControlMode, Device, DeviceDescriptor, DeviceKind, Quantity,
+    Reading, RobotId, SensorId, Unit,
 };
+use atomr_physical_projection::{ProjectionActor, ProjectionSpec};
 use atomr_physical_robotics::{Joint, RobotModel};
 use atomr_physical_ros2::{Ros2Bridge, Ros2Direction, Ros2Endpoint};
 use atomr_physical_sensing::{SamplingPolicy, SensorActor};
@@ -73,6 +76,45 @@ enum Cmd {
     Ros2 {
         #[command(subcommand)]
         op: Ros2Cmd,
+    },
+    /// Projection (Sunshine/Moonlight) output operations.
+    Project {
+        #[command(subcommand)]
+        op: ProjectCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProjectCmd {
+    /// Boot a projection supervisor and request N stub projections.
+    Demo {
+        /// Path to the Sunshine binary (use `/bin/sleep` for offline demos).
+        #[arg(long, default_value = "/bin/sleep")]
+        sunshine_binary: PathBuf,
+        /// How many projections to spin up.
+        #[arg(long, default_value_t = 1)]
+        count: u16,
+        /// How long to keep the projections running before tearing down (ms).
+        #[arg(long, default_value_t = 750)]
+        hold_ms: u64,
+        /// Force the offline pathway (skip vkms / mDNS / pairing shell-outs).
+        #[arg(long, default_value_t = true)]
+        offline: bool,
+        /// mDNS host label prefix.
+        #[arg(long, default_value = "atomr")]
+        host_label: String,
+    },
+    /// Start a projection and pair a single client (offline by default).
+    Pair {
+        /// Path to the Sunshine binary.
+        #[arg(long, default_value = "/bin/sleep")]
+        sunshine_binary: PathBuf,
+        /// The hostname displayed for the client in the pairing book.
+        #[arg(long, default_value = "demo-client")]
+        hostname: String,
+        /// 4-digit PIN to submit. Generated if absent.
+        #[arg(long)]
+        pin: Option<String>,
     },
 }
 
@@ -366,6 +408,89 @@ async fn cmd_ros2_plan(registry: &DeviceRegistry, robot: String) -> Result<()> {
     Ok(())
 }
 
+async fn cmd_project_demo(
+    sunshine_binary: PathBuf,
+    count: u16,
+    hold_ms: u64,
+    offline: bool,
+    host_label: String,
+) -> Result<()> {
+    let system = atomr_core::actor::ActorSystem::create("projection-demo", atomr_config::Config::reference())
+        .await
+        .map_err(|e| anyhow::anyhow!("actor system: {e:?}"))?;
+    let actor_ref = ProjectionActor::new(sunshine_binary)
+        .with_test_offline(offline)
+        .with_mdns_host_label(host_label)
+        .spawn(&system, "projection-demo")
+        .map_err(|e| anyhow::anyhow!("spawn projection actor: {e:?}"))?;
+    println!("project demo: starting {count} projection(s)");
+    let mut handles = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        let spec = ProjectionSpec::defaults();
+        let handle = actor_ref
+            .request_projection(spec)
+            .await
+            .with_context(|| format!("request projection {i}"))?;
+        println!(
+            "  [{i}] projection={} instance={} display={} http_port={} mdns={}",
+            handle.projection_id, handle.instance_id, handle.display_id, handle.port_window.http_port(), handle.mdns_service
+        );
+        handles.push(handle);
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(hold_ms)).await;
+    let summaries = actor_ref.list_instances().await?;
+    println!("project demo: {} live instance summaries", summaries.len());
+    for s in &summaries {
+        println!(
+            "  instance={} pid={:?} running={} last_exit={:?} ports={:?}/{:?}",
+            s.id, s.pid, s.running, s.last_exit_code, s.port_window.tcp, s.port_window.udp
+        );
+    }
+    for h in &handles {
+        actor_ref.stop_instance(h.instance_id.clone()).await?;
+        println!("  stopped instance={}", h.instance_id);
+    }
+    system.terminate().await;
+    Ok(())
+}
+
+async fn cmd_project_pair(
+    sunshine_binary: PathBuf,
+    hostname: String,
+    pin: Option<String>,
+) -> Result<()> {
+    use rand::Rng;
+    let system = atomr_core::actor::ActorSystem::create("projection-pair", atomr_config::Config::reference())
+        .await
+        .map_err(|e| anyhow::anyhow!("actor system: {e:?}"))?;
+    let actor_ref = ProjectionActor::new(sunshine_binary)
+        .with_test_offline(true)
+        .spawn(&system, "projection-pair")
+        .map_err(|e| anyhow::anyhow!("spawn projection actor: {e:?}"))?;
+    let handle = actor_ref.request_projection(ProjectionSpec::defaults()).await?;
+    let client = ClientId::new();
+    let pin = pin.unwrap_or_else(|| format!("{:04}", rand::thread_rng().gen_range(0..10000)));
+    println!("pair: instance={} client={} pin={}", handle.instance_id, client, pin);
+    let ticket = actor_ref
+        .pair_client(handle.instance_id.clone(), client.clone(), hostname.clone())
+        .await?;
+    println!("  ticket: salt_len={}", ticket.salt.len());
+    actor_ref
+        .submit_pin(handle.instance_id.clone(), client.clone(), hostname, pin)
+        .await?;
+    let pairings = actor_ref.known_pairings().await?;
+    println!("  pairings now: {}", pairings.len());
+    for p in &pairings {
+        println!(
+            "    client={} instance={} hostname={} paired_at_ms={}",
+            p.client_id, p.instance, p.hostname, p.paired_at_ms
+        );
+    }
+    actor_ref.stop_instance(handle.instance_id).await?;
+    system.terminate().await;
+    Ok(())
+}
+
 async fn cmd_ros2_spin(registry: &DeviceRegistry, robot: String, duration_ms: u64) -> Result<()> {
     if registry.robot != RobotId::from(robot.clone()) {
         anyhow::bail!("unknown robot: {robot} (registry holds {})", registry.robot);
@@ -407,6 +532,20 @@ async fn main() -> Result<()> {
         Cmd::Ros2 { op } => match op {
             Ros2Cmd::Plan { robot } => cmd_ros2_plan(&registry, robot).await?,
             Ros2Cmd::Spin { robot, duration_ms } => cmd_ros2_spin(&registry, robot, duration_ms).await?,
+        },
+        Cmd::Project { op } => match op {
+            ProjectCmd::Demo {
+                sunshine_binary,
+                count,
+                hold_ms,
+                offline,
+                host_label,
+            } => cmd_project_demo(sunshine_binary, count, hold_ms, offline, host_label).await?,
+            ProjectCmd::Pair {
+                sunshine_binary,
+                hostname,
+                pin,
+            } => cmd_project_pair(sunshine_binary, hostname, pin).await?,
         },
     }
     Ok(())

@@ -6,6 +6,8 @@ members = [
     "crates/actuation",
     "crates/robotics",
     "crates/ros2",
+    "crates/projection",
+    "crates/projection-client",
     "crates/testkit",
     "crates/py-bindings",
     "crates/cli",
@@ -63,6 +65,14 @@ semver    = { version = "1", features = ["serde"] }
 # Testing
 proptest = "1"
 
+# Projection subsystem (Sunshine/Moonlight output construct) -----------------
+reqwest  = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json"] }
+mdns-sd  = "0.11"
+tempfile = "3"
+nix      = { version = "0.29", default-features = false, features = ["signal", "process"] }
+rand     = "0.8"
+regex    = "1"
+
 # Python bindings (optional)
 pyo3                = { version = "0.22", default-features = false, features = ["macros"] }
 pyo3-async-runtimes = { version = "0.22", default-features = false, features = ["tokio-runtime"] }
@@ -91,6 +101,8 @@ atomr-physical-sensing   = { path = "crates/sensing",    version = "0.1.0" }
 atomr-physical-actuation = { path = "crates/actuation",  version = "0.1.0" }
 atomr-physical-robotics  = { path = "crates/robotics",   version = "0.1.0" }
 atomr-physical-ros2      = { path = "crates/ros2",       version = "0.1.0" }
+atomr-physical-projection         = { path = "crates/projection",        version = "0.1.0" }
+atomr-physical-projection-client  = { path = "crates/projection-client", version = "0.1.0" }
 atomr-physical-testkit   = { path = "crates/testkit",    version = "0.1.0" }
 atomr-physical           = { path = "crates/umbrella",   version = "0.1.0" }
 

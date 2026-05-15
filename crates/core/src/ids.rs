@@ -75,3 +75,23 @@ id_newtype!(
     /// Identifies a single articulated joint within a robot.
     JointId, "jnt"
 );
+id_newtype!(
+    /// Identifies a logical projection — one virtual display routed to
+    /// one or more remote Moonlight clients through a Sunshine instance.
+    ProjectionId, "proj"
+);
+id_newtype!(
+    /// Identifies a virtual display backing a projection (e.g. a vkms
+    /// CRTC + connector).
+    DisplayId, "disp"
+);
+id_newtype!(
+    /// Identifies one spawned Sunshine server process inside a
+    /// projection's supervisor tree.
+    SunshineInstanceId, "sun"
+);
+id_newtype!(
+    /// Identifies a remote Moonlight client paired against a Sunshine
+    /// instance.
+    ClientId, "cli"
+);

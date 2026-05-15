@@ -35,6 +35,10 @@ pub use atomr_physical_robotics as robotics;
 #[doc(inline)]
 pub use atomr_physical_ros2 as ros2;
 
+#[cfg(feature = "projection")]
+#[doc(inline)]
+pub use atomr_physical_projection as projection;
+
 #[cfg(feature = "testkit")]
 #[doc(inline)]
 pub use atomr_physical_testkit as testkit;
