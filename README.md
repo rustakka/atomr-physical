@@ -1,13 +1,16 @@
 # atomr-physical
 
-A native Rust **physical-systems layer** — sensing, output, and
-ROS2-integrated robotics — built as a supervised actor topology on top
-of [atomr](https://github.com/rustakka/atomr). atomr-physical extends
-the atomr actor ecosystem off the screen and into hardware: a sensor is
-an actor that publishes readings, an actuator is an actor that drains a
-command queue behind a safety envelope, and a robot is the supervisor
-at the top of that tree. Every type is a native Rust actor; the Python
-API is a first-class overlay, not an afterthought.
+A native Rust **physical-systems layer** — sensing, output (both
+low-bandwidth `Command` dispatch and full Sunshine/Moonlight video
+projection), and ROS2-integrated robotics — built as a supervised
+actor topology on top of [atomr](https://github.com/rustakka/atomr).
+atomr-physical extends the atomr actor ecosystem off the screen and
+into hardware: a sensor is an actor that publishes readings, an
+actuator is an actor that drains a command queue behind a safety
+envelope, a projector is an actor that supervises Sunshine subprocesses
+and pairs Moonlight clients, and a robot is the supervisor at the top
+of that tree. Every type is a native Rust actor; the Python API is a
+first-class overlay, not an afterthought.
 
 ```rust
 use atomr_physical::prelude::*;
@@ -141,9 +144,11 @@ already pays.
 | `atomr-physical-actuation` | `ActuatorActor` — adapts an `Actuator` driver into a supervised actor that enforces a `SafetyEnvelope` (clamp or reject) before dispatch |
 | `atomr-physical-robotics` | `RobotActor` — the supervisor at the top of a physical system; `Joint`, `RobotModel`, and the kinematic structure a robot exposes |
 | `atomr-physical-ros2` | The ROS2 bridge: `Ros2Endpoint`, `TopicMap`, `Ros2Bridge` — maps device actors onto the ROS2 topic graph; `rclrs` feature drives a live graph |
+| `atomr-physical-projection` | **(opt-in)** `ProjectionActor` — supervised Sunshine/Moonlight orchestration: vkms virtual displays, stride-shifted port windows, `SunshineInstanceActor` subprocess children, `_nvstream._tcp.local.` mDNS broadcast, HTTPS auto-pairing |
+| `atomr-physical-projection-client` | **(opt-in)** receiver-side `atomr-projection-client` binary — runs on a Pi / Jetson, browses mDNS, pairs, and execs `moonlight-embedded` |
 | `atomr-physical-testkit` | `MockSensor` / `MockActuator` implementing the device-contract traits with in-memory behaviour, for hardware-free tests |
 | `atomr-physical-py-bindings` | `atomr_physical._native` PyO3 module — six submodules exposing the value types and device contract to Python |
-| `atomr-physical-cli` | `atomr-physical` binary: `devices` / `sense` / `actuate` / `ros2` subcommands |
+| `atomr-physical-cli` | `atomr-physical` binary: `devices` / `sense` / `actuate` / `ros2` / `project` subcommands |
 
 Plus a Python facade — `pip install atomr-physical` — that exposes the
 same `Quantity` / `Reading` / `Command` / `SafetyEnvelope` /
@@ -155,8 +160,12 @@ same `Quantity` / `Reading` / `Command` / `SafetyEnvelope` /
 > mailbox, with `RobotActor` standing up its children under a
 > one-for-one `SupervisorStrategy`). The `rclrs` feature now spins a
 > real ROS 2 node with dynamic publishers and subscriptions from the
-> `TopicMap`. See [`docs/architecture.md`](docs/architecture.md) for
-> the lifecycle details.
+> `TopicMap`. A **projection** output subsystem has landed alongside
+> Phase 2 — `atomr-physical-projection` orchestrates Sunshine/Moonlight
+> as a supervised atomr actor tree (opt-in via the umbrella's
+> `projection` feature so default builds stay free of `reqwest` /
+> `mdns-sd`). See [`docs/architecture.md`](docs/architecture.md) and
+> [`docs/projection.md`](docs/projection.md) for the lifecycle details.
 
 ## Quick start (Rust)
 
@@ -170,12 +179,15 @@ atomr-physical = "0.1"
 
 # Drive the bridge against a *live* ROS2 graph (requires a ROS2 install):
 # atomr-physical = { version = "0.1", features = ["rclrs"] }
+
+# Add Sunshine/Moonlight video projection (pulls reqwest + mdns-sd):
+# atomr-physical = { version = "0.1", features = ["projection"] }
 ```
 
 Or pull subsystem crates directly — `atomr-physical-core`,
 `atomr-physical-sensing`, `atomr-physical-actuation`,
-`atomr-physical-robotics`, and `atomr-physical-ros2` are all separate
-publishables.
+`atomr-physical-robotics`, `atomr-physical-ros2`, and
+`atomr-physical-projection` are all separate publishables.
 
 ```rust
 use std::sync::Arc;
@@ -229,11 +241,30 @@ plan is inspectable and unit-testable offline. The `rclrs` feature
 client library and spins the bridge against a live ROS2 graph. See
 [`docs/ros2-bridge.md`](docs/ros2-bridge.md).
 
+## Video projection (Sunshine / Moonlight)
+
+The `atomr-physical-projection` crate extends the output surface from
+low-bandwidth `Command` dispatch to full **video projection**. A
+`ProjectionActor` is a supervised atomr actor tree that hands out
+[`vkms`](https://docs.kernel.org/gpu/vkms.html) virtual displays,
+spawns supervised `sunshine` subprocesses against stride-shifted port
+windows, broadcasts each instance over `_nvstream._tcp.local.`, and
+drives the Moonlight pairing handshake via Sunshine's HTTPS API. A
+sibling `atomr-physical-projection-client` crate runs on a Pi / Jetson
+receiver, browses mDNS for matching services, pairs, and execs
+`moonlight-embedded`. The CLI exposes the pipeline as
+`atomr-physical project demo` / `atomr-physical project pair`.
+
+Gated behind the umbrella's opt-in `projection` feature so the network
+deps (`reqwest`, `mdns-sd`) stay off default builds. See
+[`docs/projection.md`](docs/projection.md).
+
 ## Documentation map
 
 - [`docs/index.md`](docs/index.md) — documentation hub
 - [`docs/architecture.md`](docs/architecture.md) — crate stack, the device-actor model, the Phase-2 roadmap
 - [`docs/ros2-bridge.md`](docs/ros2-bridge.md) — the ROS2 topic-graph mapping and the `rclrs` feature
+- [`docs/projection.md`](docs/projection.md) — the Sunshine/Moonlight projection subsystem
 - [`docs/python-api.md`](docs/python-api.md) — the `atomr_physical.*` module map and the native-overlay pattern
 - [`docs/feature-matrix.md`](docs/feature-matrix.md) — every feature flag and what it pulls in
 - [`docs/release-pipeline.md`](docs/release-pipeline.md) / [`docs/release-process.md`](docs/release-process.md) — the release pipeline (currently manual-only; see `RELEASING.md`)

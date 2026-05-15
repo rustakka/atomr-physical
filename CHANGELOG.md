@@ -9,6 +9,38 @@ this project adheres to
 
 ### Added
 
+- **`atomr-physical-projection`** — projection output subsystem
+  (opt-in via the umbrella's `projection` feature). `ProjectionActor`
+  is the supervisor at the top of a Sunshine/Moonlight subtree,
+  owning a `VkmsDisplayManager` for headless virtual displays, a
+  `PortAllocator` that hands out stride-shifted Sunshine port windows,
+  a pool of supervised `SunshineInstanceActor` subprocess children, an
+  `MdnsBroadcaster` advertising each instance as
+  `_nvstream._tcp.local.`, and a `ClientProvisioner` driving the
+  Moonlight pairing handshake (announce + PIN) over Sunshine's local
+  HTTPS API. Follows the same offline / supervised two-form contract
+  every other device actor uses —
+  `ProjectionActor::with_test_offline(true)` plus a `/bin/sleep`
+  Sunshine binary lets the whole pipeline run hardware-free under CI.
+  Graceful supervisor restarts on `BandwidthTier` boundaries adjust
+  bitrate as additional clients mirror the stream.
+- **`atomr-physical-projection-client`** — receiver-side
+  `atomr-projection-client` binary intended for an ARM device on the
+  same LAN (Raspberry Pi, Jetson). `discover` browses
+  `_nvstream._tcp.local.` and prints matches; `run` pairs against the
+  first match and execs `moonlight-embedded`. Stateless by design
+  (every run is a fresh pair-and-stream cycle), ships a bundled
+  systemd unit and a documented `aarch64-unknown-linux-gnu`
+  cross-compile recipe.
+- **CLI `project` subcommand** — `project demo` boots a
+  `ProjectionActor` and spins up N stub projections; `project pair`
+  runs the full pair-and-tear-down flow. Defaults to `/bin/sleep` +
+  `--offline` so it requires no privileges; point `--sunshine-binary`
+  at `/usr/bin/sunshine` for a real Sunshine install.
+- **Umbrella `projection` feature** — opt-in so default builds stay
+  free of the network deps the projection crate pulls in (`reqwest`,
+  `mdns-sd`, `nix`, `tempfile`). The `full` feature now includes
+  `projection`.
 - **Live device actors.** `SensorActor`, `ActuatorActor`, and
   `RobotActor` each gained a `spawn(system, name)` method that promotes
   the offline configuration into a supervised atomr actor; the new

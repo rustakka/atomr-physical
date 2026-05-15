@@ -58,6 +58,26 @@ device to a `Ros2Endpoint` (topic name + message type + direction);
 transport-agnostic and builds with no ROS2 installation — see
 [ros2-bridge.md](ros2-bridge.md).
 
+### `atomr-physical-projection` — the projection supervisor
+
+Opt-in (umbrella `projection` feature) crate that extends the output
+surface beyond `Command` dispatch into full video projection.
+`ProjectionActor` is the supervisor at the top of a projection
+subtree: it owns a `VkmsDisplayManager` for headless virtual
+displays, a `PortAllocator` for stride-shifted Sunshine port windows,
+a pool of supervised `SunshineInstanceActor` subprocess children, an
+`MdnsBroadcaster` advertising each instance as
+`_nvstream._tcp.local.`, and a `ClientProvisioner` driving Sunshine's
+HTTPS pairing API. A sibling `atomr-physical-projection-client` crate
+ships the receiver-side binary that browses mDNS, pairs, and execs
+`moonlight-embedded`. See [projection.md](projection.md).
+
+The projection subsystem is opt-in by design — its network deps
+(`reqwest`, `mdns-sd`) stay off default builds. The same two-form
+contract every other device actor uses applies:
+`ProjectionActor::with_test_offline(true)` plus a `/bin/sleep` Sunshine
+binary lets the whole supervised pipeline run hardware-free under CI.
+
 ### `atomr-physical-testkit` — the test doubles
 
 `MockSensor` (replays a script of `Quantity` values) and `MockActuator`

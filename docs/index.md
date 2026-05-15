@@ -37,22 +37,26 @@ boundary, so there is no second implementation to drift.
 ## The crate stack
 
 ```
-                    atomr-physical            (umbrella, feature-gated)
-                          │
-   ┌──────────────┬───────┴────────┬──────────────┐
-   │              │                │              │
- ros2          robotics         cli            py-bindings
-   │              │                                │
-   └──────┬───────┴────────────────────────────────┘
-          │
-   ┌──────┴───────┐
- sensing      actuation        testkit
-   │              │              │
-   └──────┬───────┴──────────────┘
-          │
-        core              (pure data + Device/Sensor/Actuator traits)
-          │
-        atomr             (the actor runtime — a crates.io dependency)
+                       atomr-physical              (umbrella, feature-gated)
+                              │
+   ┌──────────┬──────────┬────┴────┬──────┬───────────────┐
+   │          │          │         │      │               │
+ ros2     projection  robotics    cli  py-bindings     testkit
+   │          │          │         │
+   │   (opt-in: Sunshine │         │
+   │    /Moonlight,      │         │
+   │    vkms + mDNS)     │         │
+   │                     │         │
+   │              ┌──────┴──────┐  │
+   │            sensing    actuation
+   │              │            │   │
+   │              └─────┬──────┘   │
+   │                    │          │
+   └────────────────────┴──────────┘
+                        │
+                      core   (pure data + Device/Sensor/Actuator traits)
+                        │
+                      atomr  (the actor runtime — a crates.io dependency)
 ```
 
 `atomr-physical-core` is the pure-data foundation — no actor-runtime,
@@ -87,10 +91,20 @@ subscriptions built from the `TopicMap`. The Python overlay rides on
 the same value types, unchanged. See
 [architecture.md](architecture.md) for the full lifecycle.
 
+A **projection** output subsystem has landed alongside Phase 2: the
+opt-in `atomr-physical-projection` crate plus its receiver-side
+companion `atomr-physical-projection-client` orchestrate
+Sunshine/Moonlight as a supervised atomr actor tree, with vkms
+virtual displays, mDNS discovery, and auto-pairing. Gated behind the
+umbrella's `projection` feature so the default build stays free of
+the network deps it pulls in (`reqwest`, `mdns-sd`). See
+[projection.md](projection.md).
+
 ## Documentation map
 
 - [Architecture](architecture.md) — crate stack, the device-actor model, the Phase-2 roadmap.
 - [ROS2 bridge](ros2-bridge.md) — the topic-graph mapping and the `rclrs` feature.
+- [Projection](projection.md) — the Sunshine/Moonlight video projection subsystem (opt-in).
 - [Python API](python-api.md) — the `atomr_physical.*` module map and the native-overlay pattern.
 - [Feature matrix](feature-matrix.md) — every feature flag and what it pulls in.
 - [Release pipeline](release-pipeline.md) / [Release process](release-process.md) — the release pipeline (currently manual-only).
