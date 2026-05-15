@@ -17,6 +17,8 @@ pub enum Unit {
     Metre,
     /// Metres per second (linear velocity).
     MetrePerSecond,
+    /// Metres per second squared (linear acceleration).
+    MetrePerSecondSquared,
     /// Radians (angular position).
     Radian,
     /// Radians per second (angular velocity).
@@ -44,6 +46,7 @@ impl Unit {
             Unit::Scalar => "",
             Unit::Metre => "m",
             Unit::MetrePerSecond => "m/s",
+            Unit::MetrePerSecondSquared => "m/s²",
             Unit::Radian => "rad",
             Unit::RadianPerSecond => "rad/s",
             Unit::Newton => "N",

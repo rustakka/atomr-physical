@@ -1,0 +1,36 @@
+[package]
+name          = "atomr-physical-control"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+homepage      = { workspace = true }
+authors       = { workspace = true }
+description   = "Robot-agnostic control primitives for atomr-physical: PID, LQR, FSM, inverted-pendulum balance, IMU aggregation, and joint-feedback aggregation actors."
+
+keywords      = ["robotics", "control", "pid", "lqr", "atomr"]
+categories    = ["science::robotics", "asynchronous"]
+readme        = "../../README.md"
+
+[lib]
+name = "atomr_physical_control"
+
+[dependencies]
+atomr-physical-core       = { workspace = true }
+atomr-physical-sensing    = { workspace = true }
+atomr-physical-actuation  = { workspace = true }
+atomr-physical-robotics   = { workspace = true }
+atomr-core                = { workspace = true }
+atomr-config              = { workspace = true }
+tokio                     = { workspace = true }
+async-trait               = { workspace = true }
+tracing                   = { workspace = true }
+serde                     = { workspace = true }
+thiserror                 = { workspace = true }
+nalgebra                  = { workspace = true }
+chrono                    = { workspace = true }
+
+[dev-dependencies]
+atomr-physical-testkit = { workspace = true }
+tokio                  = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

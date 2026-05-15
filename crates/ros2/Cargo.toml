@@ -28,8 +28,13 @@ tracing                  = { workspace = true }
 # `dyn_msg` enabled the bridge can construct publishers / subscriptions
 # from a topic-type **string** (the form `TopicMap` already stores) so
 # we don't need colcon-generated message crates to compile.
-rclrs   = { version = "0.7", optional = true }
-futures = { workspace = true, optional = true }
+rclrs              = { version = "0.7", optional = true }
+# rclrs exposes message field types as `rosidl_runtime_rs::{String,
+# Sequence}`; the typed encoders need to construct these directly when
+# replacing string sequences / numeric sequences on `JointState`-style
+# messages, so we depend on the same version rclrs 0.7 pulls in.
+rosidl_runtime_rs  = { version = "0.6", optional = true }
+futures            = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -40,4 +45,4 @@ default = []
 # — the build script needs the `rcl` / `rmw` / `rosidl` headers and the
 # `dyn_msg` runtime needs the type-introspection `.so`s. Off by default
 # so the workspace still builds anywhere.
-rclrs = ["dep:rclrs", "dep:futures"]
+rclrs = ["dep:rclrs", "dep:rosidl_runtime_rs", "dep:futures"]

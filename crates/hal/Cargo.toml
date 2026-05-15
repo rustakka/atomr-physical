@@ -1,0 +1,51 @@
+[package]
+name          = "atomr-physical-hal"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+homepage      = { workspace = true }
+authors       = { workspace = true }
+description   = "Hardware abstraction layer (bus actors + device drivers) for atomr-physical."
+
+keywords      = ["robotics", "hal", "can", "i2c", "spi"]
+categories    = ["science::robotics", "embedded", "hardware-support"]
+readme        = "../../README.md"
+
+[lib]
+name = "atomr_physical_hal"
+
+[dependencies]
+atomr-physical-core      = { workspace = true }
+atomr-physical-sensing   = { workspace = true }
+atomr-physical-actuation = { workspace = true }
+atomr-core               = { workspace = true }
+atomr-config             = { workspace = true }
+async-trait              = { workspace = true }
+tokio                    = { workspace = true }
+tracing                  = { workspace = true }
+serde                    = { workspace = true }
+thiserror                = { workspace = true }
+parking_lot              = { workspace = true }
+chrono                   = { workspace = true }
+
+socketcan          = { workspace = true, optional = true }
+linux-embedded-hal = { workspace = true, optional = true }
+embedded-hal       = { workspace = true, optional = true }
+nb                 = { workspace = true, optional = true }
+
+[dev-dependencies]
+atomr-physical-testkit = { workspace = true }
+tokio                  = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[features]
+default = []
+can         = ["dep:socketcan"]
+i2c         = ["dep:linux-embedded-hal", "dep:embedded-hal"]
+spi         = ["dep:linux-embedded-hal", "dep:embedded-hal"]
+bno085      = ["i2c"]
+odrive      = ["can"]
+qdd-mit     = ["can"]
+as5048a     = ["spi"]
+all-drivers = ["bno085", "odrive", "qdd-mit", "as5048a"]

@@ -1,0 +1,29 @@
+[package]
+name          = "atomr-physical-kinematics"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+homepage      = { workspace = true }
+authors       = { workspace = true }
+description   = "Robot-agnostic kinematics for atomr-physical: SE(3) poses, kinematic chains, forward kinematics, geometric Jacobians, and damped-least-squares inverse kinematics."
+
+keywords      = ["kinematics", "robotics", "se3", "jacobian", "inverse-kinematics"]
+categories    = ["science::robotics", "mathematics"]
+readme        = "../../README.md"
+
+[lib]
+name = "atomr_physical_kinematics"
+
+[dependencies]
+atomr-physical-core = { workspace = true }
+nalgebra            = { workspace = true }
+serde               = { workspace = true }
+thiserror           = { workspace = true }
+
+[features]
+default = []
+# Placeholder for future geometry_msgs / Pose conversion. Wire-up only:
+# the gated `ros2` module currently documents intent but exposes no API.
+ros2    = []

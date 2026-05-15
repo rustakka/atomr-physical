@@ -19,6 +19,9 @@ atomr-physical-sensing    = { workspace = true, optional = true }
 atomr-physical-actuation  = { workspace = true, optional = true }
 atomr-physical-robotics   = { workspace = true, optional = true }
 atomr-physical-ros2       = { workspace = true, optional = true }
+atomr-physical-control    = { workspace = true, optional = true }
+atomr-physical-kinematics = { workspace = true, optional = true }
+atomr-physical-hal        = { workspace = true, optional = true }
 atomr-physical-projection = { workspace = true, optional = true }
 atomr-physical-testkit    = { workspace = true, optional = true }
 
@@ -28,9 +31,23 @@ sensing    = ["dep:atomr-physical-sensing"]
 actuation  = ["dep:atomr-physical-actuation"]
 robotics   = ["dep:atomr-physical-robotics", "sensing", "actuation"]
 ros2       = ["dep:atomr-physical-ros2", "robotics"]
+control    = ["dep:atomr-physical-control", "robotics"]
+kinematics = ["dep:atomr-physical-kinematics"]
+hal         = ["dep:atomr-physical-hal", "sensing", "actuation"]
+hal-can     = ["hal", "atomr-physical-hal/can"]
+hal-i2c     = ["hal", "atomr-physical-hal/i2c"]
+hal-spi     = ["hal", "atomr-physical-hal/spi"]
+hal-bno085  = ["hal-i2c", "atomr-physical-hal/bno085"]
+hal-odrive  = ["hal-can", "atomr-physical-hal/odrive"]
+hal-qdd-mit = ["hal-can", "atomr-physical-hal/qdd-mit"]
+hal-as5048a = ["hal-spi", "atomr-physical-hal/as5048a"]
+hal-all     = ["hal", "hal-bno085", "hal-odrive", "hal-qdd-mit", "hal-as5048a"]
 projection = ["dep:atomr-physical-projection"]
 testkit    = ["dep:atomr-physical-testkit"]
 # `rclrs` forwards to the ros2 crate's live-bridge feature; it requires
 # a ROS2 installation on the build host.
 rclrs      = ["ros2", "atomr-physical-ros2/rclrs"]
-full       = ["sensing", "actuation", "robotics", "ros2", "projection", "testkit"]
+full       = ["sensing", "actuation", "robotics", "ros2", "control", "kinematics", "projection", "testkit"]
+# `full-linux` is `full` plus the platform-specific hardware drivers.
+# Linux-only — pulls in socketcan and linux-embedded-hal.
+full-linux = ["full", "hal-all"]

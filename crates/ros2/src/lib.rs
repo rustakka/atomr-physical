@@ -16,11 +16,15 @@
 //! See [`docs/ros2-bridge.md`](https://github.com/rustakka/atomr-physical/blob/main/docs/ros2-bridge.md).
 
 use std::collections::HashMap;
+#[cfg(feature = "rclrs")]
+use std::sync::Arc;
 
 #[cfg(not(feature = "rclrs"))]
 use atomr_physical_core::PhysicalError;
 use atomr_physical_core::{ActuatorId, Result, RobotId, SensorId};
 use serde::{Deserialize, Serialize};
+
+pub mod encoders;
 
 /// Re-export of the atomr actor runtime this crate builds on.
 pub use atomr_core as actor;
@@ -141,6 +145,8 @@ pub struct Ros2Bridge {
     node_name: String,
     robot: RobotId,
     topics: TopicMap,
+    #[cfg(feature = "rclrs")]
+    encoders: HashMap<String, Arc<dyn encoders::MessageEncoder>>,
 }
 
 impl Ros2Bridge {
@@ -150,7 +156,30 @@ impl Ros2Bridge {
             node_name: node_name.into(),
             robot,
             topics: TopicMap::new(),
+            #[cfg(feature = "rclrs")]
+            encoders: HashMap::new(),
         }
+    }
+
+    /// Register a typed [`MessageEncoder`](encoders::MessageEncoder)
+    /// for a ROS message type. Endpoints whose `message_type` matches
+    /// `message_type` will route through this encoder on publish; all
+    /// other types fall through to the default single-float-field
+    /// shortcut. Builder-style for chaining at construction time.
+    #[cfg(feature = "rclrs")]
+    pub fn with_encoder(
+        mut self,
+        message_type: impl Into<String>,
+        encoder: Arc<dyn encoders::MessageEncoder>,
+    ) -> Self {
+        self.encoders.insert(message_type.into(), encoder);
+        self
+    }
+
+    /// The registered encoder map. Empty by default.
+    #[cfg(feature = "rclrs")]
+    pub fn encoders(&self) -> &HashMap<String, Arc<dyn encoders::MessageEncoder>> {
+        &self.encoders
     }
 
     /// The ROS2 node name this bridge will register.
@@ -203,7 +232,7 @@ impl Ros2Bridge {
 
     #[cfg(feature = "rclrs")]
     pub async fn spin(&self) -> Result<Ros2BridgeHandle> {
-        rclrs_spin::spin(&self.node_name, &self.robot, &self.topics).await
+        rclrs_spin::spin(&self.node_name, &self.robot, &self.topics, &self.encoders).await
     }
 }
 
@@ -237,14 +266,37 @@ impl Ros2BridgeHandle {
     }
 
     /// Publish a [`Reading`] on the topic bound to `sensor`. The
-    /// reading's numeric value is written to the first `f64`-shaped
-    /// field of the bound message type (`std_msgs/msg/Float64::data`,
+    /// reading's numeric value is routed through the encoder
+    /// registered for the topic's message type. When no encoder is
+    /// registered, the default
+    /// [`FloatScalarEncoder`](encoders::FloatScalarEncoder) writes
+    /// the value into the first `f64`-shaped field of the bound
+    /// message type (`std_msgs/msg/Float64::data`,
     /// `sensor_msgs/msg/Temperature::temperature`, …).
     ///
     /// [`Reading`]: atomr_physical_core::Reading
     #[cfg(feature = "rclrs")]
     pub fn publish_reading(&self, sensor: &SensorId, reading: &atomr_physical_core::Reading) -> Result<()> {
         self.inner.publish_reading(sensor, reading)
+    }
+
+    /// Publish a typed [`EncoderPayload`](encoders::EncoderPayload)
+    /// on the topic bound to `sensor`. The bridge looks up the
+    /// encoder registered for the bound message type (via
+    /// [`Ros2Bridge::with_encoder`]) and writes the payload through
+    /// it; absent a registered encoder, the default
+    /// [`FloatScalarEncoder`](encoders::FloatScalarEncoder) handles
+    /// it (treating non-scalar payloads as a warning + zero).
+    ///
+    /// Use this for multi-field messages like `sensor_msgs/Imu`,
+    /// `sensor_msgs/JointState`, or `geometry_msgs/Twist`.
+    #[cfg(feature = "rclrs")]
+    pub fn publish_payload(
+        &self,
+        sensor: &SensorId,
+        payload: encoders::EncoderPayload,
+    ) -> Result<()> {
+        self.inner.publish_payload(sensor, payload)
     }
 
     /// Number of subscriptions currently observing this bridge's
@@ -278,6 +330,7 @@ mod rclrs_spin {
     use rclrs::*;
     use tokio::task::JoinHandle;
 
+    use super::encoders::{EncoderPayload, FloatScalarEncoder, MessageEncoder};
     use super::{Ros2BridgeHandle, Ros2Direction, TopicMap};
 
     /// A publisher together with the metadata needed to mint fresh
@@ -285,11 +338,22 @@ mod rclrs_spin {
     struct PublisherEntry {
         publisher: DynamicPublisher,
         metadata: DynamicMessageMetadata,
+        // Kept so the publish path can look up a typed encoder by
+        // ROS message-type string without re-traversing the topic
+        // map. Cheap (a String per publisher) and avoids threading
+        // the TopicMap into SpinHandle.
+        message_type: String,
     }
 
     /// State carried by a spinning bridge.
     pub(super) struct SpinHandle {
         publishers: HashMap<SensorId, PublisherEntry>,
+        // Typed encoder registry, keyed by ROS message-type string.
+        // Lookup falls back to FloatScalarEncoder when a message type
+        // isn't in the map, preserving the legacy single-float
+        // shortcut for std_msgs/Float64, sensor_msgs/Temperature, etc.
+        encoders: HashMap<String, Arc<dyn MessageEncoder>>,
+        fallback_encoder: Arc<dyn MessageEncoder>,
         // The futures-oneshot sender held alongside the executor's
         // `until_promise_resolved` receiver. Dropping it on shutdown
         // resolves (cancels) the promise, which the executor's wait
@@ -317,6 +381,14 @@ mod rclrs_spin {
         }
 
         pub(super) fn publish_reading(&self, sensor: &SensorId, reading: &Reading) -> Result<()> {
+            self.publish_payload(sensor, EncoderPayload::Scalar(reading.quantity.value))
+        }
+
+        pub(super) fn publish_payload(
+            &self,
+            sensor: &SensorId,
+            payload: EncoderPayload,
+        ) -> Result<()> {
             let entry = self.publishers.get(sensor).ok_or_else(|| {
                 PhysicalError::Ros2Bridge(format!("no publisher bound for sensor {sensor}"))
             })?;
@@ -324,12 +396,14 @@ mod rclrs_spin {
                 .metadata
                 .create()
                 .map_err(|e| PhysicalError::Ros2Bridge(format!("metadata.create: {e}")))?;
-            // Walk the structure once and write the reading's numeric
-            // value into the first `f64`-shaped field. This covers the
-            // common-case message types — `std_msgs/Float64::data`,
-            // `sensor_msgs/Temperature::temperature`, etc. — without
-            // requiring a per-type codec table.
-            write_first_float_field(&mut message, reading.quantity.value);
+            let encoder = self
+                .encoders
+                .get(&entry.message_type)
+                .cloned()
+                .unwrap_or_else(|| self.fallback_encoder.clone());
+            encoder.encode(&mut message, &payload).map_err(|e| {
+                PhysicalError::Ros2Bridge(format!("encode {}: {e}", entry.message_type))
+            })?;
             entry
                 .publisher
                 .publish(message)
@@ -363,6 +437,7 @@ mod rclrs_spin {
         node_name: &str,
         _robot: &RobotId,
         topics: &TopicMap,
+        encoders: &HashMap<String, Arc<dyn MessageEncoder>>,
     ) -> Result<Ros2BridgeHandle> {
         let context =
             Context::default_from_env().map_err(|e| PhysicalError::Ros2Bridge(format!("rclrs init: {e}")))?;
@@ -388,7 +463,14 @@ mod rclrs_spin {
                         endpoint.message_type, endpoint.topic
                     ))
                 })?;
-            publishers.insert(sensor_id.clone(), PublisherEntry { publisher, metadata });
+            publishers.insert(
+                sensor_id.clone(),
+                PublisherEntry {
+                    publisher,
+                    metadata,
+                    message_type: endpoint.message_type.clone(),
+                },
+            );
         }
 
         let received: Arc<Mutex<Vec<(ActuatorId, String)>>> = Arc::new(Mutex::new(Vec::new()));
@@ -441,6 +523,8 @@ mod rclrs_spin {
         Ok(Ros2BridgeHandle {
             inner: SpinHandle {
                 publishers,
+                encoders: encoders.clone(),
+                fallback_encoder: Arc::new(FloatScalarEncoder),
                 shutdown_promise: Some(shutdown_tx),
                 commands,
                 _subscriptions: subscriptions,
@@ -450,29 +534,6 @@ mod rclrs_spin {
         })
     }
 
-    /// Walk the dynamic message's fields and write `value` into the
-    /// first floating-point primitive. Returns silently if no float
-    /// field is found — the publish still goes out with defaults.
-    fn write_first_float_field(message: &mut DynamicMessage, value: f64) {
-        let field_names: Vec<String> = message.iter().map(|(name, _)| name.to_string()).collect();
-        for name in field_names {
-            if let Some(field) = message.get_mut(&name) {
-                if let ValueMut::Simple(simple) = field {
-                    match simple {
-                        SimpleValueMut::Double(slot) => {
-                            *slot = value;
-                            return;
-                        }
-                        SimpleValueMut::Float(slot) => {
-                            *slot = value as f32;
-                            return;
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -506,6 +567,74 @@ mod tests {
     async fn spin_without_rclrs_feature_errors() {
         let bridge = Ros2Bridge::new("atomr_physical_node", RobotId::from("r1"));
         assert!(bridge.spin().await.is_err());
+    }
+
+    #[test]
+    fn encoder_payload_types_compile_without_rclrs() {
+        // The payload types must be constructible regardless of the
+        // `rclrs` feature so callers can build them in offline /
+        // cross-platform code paths.
+        use crate::encoders::{
+            EncoderPayload, ImuPayload, JointStatePayload, TwistPayload,
+        };
+        let imu = EncoderPayload::Imu(ImuPayload {
+            orientation: [1.0, 0.0, 0.0, 0.0],
+            angular_velocity: [0.0; 3],
+            linear_acceleration: [0.0, 0.0, 9.81],
+            orientation_covariance: None,
+            angular_velocity_covariance: None,
+            linear_acceleration_covariance: Some([1e-3; 9]),
+            frame_id: Some("imu_link".into()),
+            stamp_sec: 0,
+            stamp_nanosec: 0,
+        });
+        let _ = format!("{imu:?}");
+        let _js = EncoderPayload::JointState(JointStatePayload {
+            names: vec!["j1".into()],
+            positions: vec![0.0],
+            velocities: vec![0.0],
+            efforts: vec![0.0],
+            frame_id: None,
+            stamp_sec: 0,
+            stamp_nanosec: 0,
+        });
+        let _tw = EncoderPayload::Twist(TwistPayload {
+            linear: [0.1, 0.0, 0.0],
+            angular: [0.0, 0.0, 0.2],
+        });
+        let _s = EncoderPayload::Scalar(42.0);
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "rclrs")]
+    async fn bridge_uses_imu_encoder_for_sensor_msgs_imu() {
+        use crate::encoders::{EncoderPayload, ImuEncoder, ImuPayload};
+        use std::sync::Arc;
+        let mut bridge = Ros2Bridge::new(
+            "atomr_physical_imu_test_node",
+            RobotId::from("r1"),
+        )
+        .with_encoder("sensor_msgs/msg/Imu", Arc::new(ImuEncoder));
+        bridge.topics_mut().bind_sensor(
+            SensorId::from("imu"),
+            Ros2Endpoint::publish("/atomr_physical/test/imu", "sensor_msgs/msg/Imu"),
+        );
+        let handle = bridge.spin().await.unwrap();
+        let payload = EncoderPayload::Imu(ImuPayload {
+            orientation: [1.0, 0.0, 0.0, 0.0],
+            angular_velocity: [0.0, 0.0, 0.0],
+            linear_acceleration: [0.0, 0.0, 9.81],
+            orientation_covariance: None,
+            angular_velocity_covariance: None,
+            linear_acceleration_covariance: None,
+            frame_id: Some("imu_link".into()),
+            stamp_sec: 0,
+            stamp_nanosec: 0,
+        });
+        handle
+            .publish_payload(&SensorId::from("imu"), payload)
+            .unwrap();
+        handle.shutdown().await.unwrap();
     }
 
     #[tokio::test]

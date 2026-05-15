@@ -6,6 +6,9 @@ members = [
     "crates/actuation",
     "crates/robotics",
     "crates/ros2",
+    "crates/control",
+    "crates/kinematics",
+    "crates/hal",
     "crates/projection",
     "crates/projection-client",
     "crates/testkit",
@@ -65,6 +68,17 @@ semver    = { version = "1", features = ["serde"] }
 # Testing
 proptest = "1"
 
+# Math (control + kinematics) ------------------------------------------------
+nalgebra = { version = "0.33", default-features = false, features = ["std"] }
+
+# Hardware abstraction (HAL) -----------------------------------------------
+# Linux-only — only pulled in when the hal crate's transport features
+# are selected. Pinned at workspace scope so all HAL crates agree.
+socketcan          = { version = "3", default-features = false }
+linux-embedded-hal = { version = "0.4" }
+embedded-hal       = { version = "1" }
+nb                 = { version = "1" }
+
 # Projection subsystem (Sunshine/Moonlight output construct) -----------------
 reqwest  = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json"] }
 mdns-sd  = "0.11"
@@ -96,15 +110,18 @@ atomr-streams   = "0.9.2"
 # All publishable crates live under the `atomr-physical-*` namespace.
 # Lib names follow `atomr_physical_X` (snake_case of the package name),
 # so source code imports them as `use atomr_physical_X::*`.
-atomr-physical-core      = { path = "crates/core",       version = "0.1.0" }
-atomr-physical-sensing   = { path = "crates/sensing",    version = "0.1.0" }
-atomr-physical-actuation = { path = "crates/actuation",  version = "0.1.0" }
-atomr-physical-robotics  = { path = "crates/robotics",   version = "0.1.0" }
-atomr-physical-ros2      = { path = "crates/ros2",       version = "0.1.0" }
+atomr-physical-core       = { path = "crates/core",       version = "0.1.0" }
+atomr-physical-sensing    = { path = "crates/sensing",    version = "0.1.0" }
+atomr-physical-actuation  = { path = "crates/actuation",  version = "0.1.0" }
+atomr-physical-robotics   = { path = "crates/robotics",   version = "0.1.0" }
+atomr-physical-ros2       = { path = "crates/ros2",       version = "0.1.0" }
+atomr-physical-control    = { path = "crates/control",    version = "0.1.0" }
+atomr-physical-kinematics = { path = "crates/kinematics", version = "0.1.0" }
+atomr-physical-hal        = { path = "crates/hal",        version = "0.1.0" }
 atomr-physical-projection         = { path = "crates/projection",        version = "0.1.0" }
 atomr-physical-projection-client  = { path = "crates/projection-client", version = "0.1.0" }
-atomr-physical-testkit   = { path = "crates/testkit",    version = "0.1.0" }
-atomr-physical           = { path = "crates/umbrella",   version = "0.1.0" }
+atomr-physical-testkit    = { path = "crates/testkit",    version = "0.1.0" }
+atomr-physical            = { path = "crates/umbrella",   version = "0.1.0" }
 
 [profile.release]
 opt-level     = 3

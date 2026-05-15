@@ -7,7 +7,10 @@
 //! This umbrella crate re-exports each subsystem behind a feature flag,
 //! mirroring the convention used by the `atomr` and `atomr-agents`
 //! umbrellas. [`core`] is always present; [`sensing`], [`actuation`],
-//! [`robotics`], [`ros2`], [`projection`], and [`testkit`] are opt-in.
+//! [`robotics`], [`ros2`], [`control`], [`kinematics`], [`hal`],
+//! [`projection`], and [`testkit`] are opt-in. The `hal-*` features
+//! and `full-linux` are Linux-only because they pull in `socketcan`
+//! and `linux-embedded-hal`.
 //!
 //! ```toml
 //! [dependencies]
@@ -39,6 +42,18 @@ pub use atomr_physical_robotics as robotics;
 #[cfg(feature = "ros2")]
 #[doc(inline)]
 pub use atomr_physical_ros2 as ros2;
+
+#[cfg(feature = "control")]
+#[doc(inline)]
+pub use atomr_physical_control as control;
+
+#[cfg(feature = "kinematics")]
+#[doc(inline)]
+pub use atomr_physical_kinematics as kinematics;
+
+#[cfg(feature = "hal")]
+#[doc(inline)]
+pub use atomr_physical_hal as hal;
 
 #[cfg(feature = "projection")]
 #[doc(inline)]
