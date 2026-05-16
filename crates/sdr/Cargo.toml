@@ -1,0 +1,40 @@
+[package]
+name          = "atomr-physical-sdr"
+version       = { workspace = true }
+edition       = { workspace = true }
+rust-version  = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+homepage      = { workspace = true }
+authors       = { workspace = true }
+description   = "Software-Defined Radio (HackRF One) as a supervised atomr actor with streaming IQ broadcast and optional SigMF recording."
+
+keywords      = ["robotics", "sdr", "hackrf", "rf", "atomr"]
+categories    = ["science::robotics", "asynchronous", "hardware-support"]
+readme        = "README.md"
+
+[dependencies]
+atomr-physical-core = { workspace = true }
+atomr-core          = { workspace = true }
+async-trait         = { workspace = true }
+tokio               = { workspace = true }
+tracing             = { workspace = true }
+serde               = { workspace = true }
+serde_json          = { workspace = true }
+arc-swap            = { workspace = true }
+chrono              = { workspace = true }
+thiserror           = { workspace = true }
+rs-hackrf           = { workspace = true }
+
+[dev-dependencies]
+atomr-config             = { workspace = true }
+atomr-physical-testkit   = { workspace = true, features = ["sdr"] }
+tokio                    = { workspace = true, features = ["full", "macros", "rt-multi-thread", "test-util"] }
+tempfile                 = { workspace = true }
+
+[features]
+default = []
+# `sigmf` turns on the SigmfWriter child actor and the supporting
+# JSON-metadata writer. SigMF (https://github.com/sigmf/SigMF) is the
+# GNU-Radio / inspectrum / gqrx-compatible IQ recording format.
+sigmf   = []

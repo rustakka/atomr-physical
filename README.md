@@ -144,11 +144,12 @@ already pays.
 | `atomr-physical-actuation` | `ActuatorActor` — adapts an `Actuator` driver into a supervised actor that enforces a `SafetyEnvelope` (clamp or reject) before dispatch |
 | `atomr-physical-robotics` | `RobotActor` — the supervisor at the top of a physical system; `Joint`, `RobotModel`, and the kinematic structure a robot exposes |
 | `atomr-physical-ros2` | The ROS2 bridge: `Ros2Endpoint`, `TopicMap`, `Ros2Bridge` — maps device actors onto the ROS2 topic graph; `rclrs` feature drives a live graph |
+| `atomr-physical-sdr` | **(opt-in)** Software-Defined Radio (HackRF One) as a supervised actor with streaming IQ broadcast and optional SigMF recording. `SdrActor` adapts [`rs-hackrf`](https://crates.io/crates/rs-hackrf) into the actor surface; `SdrActorRef::subscribe()` hands out a `broadcast::Receiver<IqChunk>` of interleaved `ci8_le` samples. The `sdr-sigmf` feature pairs the channel with a [SigMF](https://github.com/sigmf/SigMF) writer for on-disk capture |
 | `atomr-physical-projection` | **(opt-in)** `ProjectionActor` — supervised Sunshine/Moonlight orchestration: vkms virtual displays, stride-shifted port windows, `SunshineInstanceActor` subprocess children, `_nvstream._tcp.local.` mDNS broadcast, HTTPS auto-pairing |
 | `atomr-physical-projection-client` | **(opt-in)** receiver-side `atomr-projection-client` binary — runs on a Pi / Jetson, browses mDNS, pairs, and execs `moonlight-embedded` |
 | `atomr-physical-testkit` | `MockSensor` / `MockActuator` implementing the device-contract traits with in-memory behaviour, for hardware-free tests |
 | `atomr-physical-py-bindings` | `atomr_physical._native` PyO3 module — six submodules exposing the value types and device contract to Python |
-| `atomr-physical-cli` | `atomr-physical` binary: `devices` / `sense` / `actuate` / `ros2` / `project` subcommands |
+| `atomr-physical-cli` | `atomr-physical` binary: `devices` / `sense` / `actuate` / `ros2` / `project` / `sdr` subcommands |
 
 Plus a Python facade — `pip install atomr-physical` — that exposes the
 same `Quantity` / `Reading` / `Command` / `SafetyEnvelope` /
@@ -182,12 +183,19 @@ atomr-physical = "0.1"
 
 # Add Sunshine/Moonlight video projection (pulls reqwest + mdns-sd):
 # atomr-physical = { version = "0.1", features = ["projection"] }
+
+# Add the HackRF One SDR actor (streaming IQ broadcast, pulls rs-hackrf):
+# atomr-physical = { version = "0.1", features = ["sdr"] }
+
+# Same, with on-disk SigMF capture (adds the SigmfWriter):
+# atomr-physical = { version = "0.1", features = ["sdr-sigmf"] }
 ```
 
 Or pull subsystem crates directly — `atomr-physical-core`,
 `atomr-physical-sensing`, `atomr-physical-actuation`,
-`atomr-physical-robotics`, `atomr-physical-ros2`, and
-`atomr-physical-projection` are all separate publishables.
+`atomr-physical-robotics`, `atomr-physical-ros2`,
+`atomr-physical-projection`, and `atomr-physical-sdr` are all separate
+publishables.
 
 ```rust
 use std::sync::Arc;
@@ -265,6 +273,7 @@ deps (`reqwest`, `mdns-sd`) stay off default builds. See
 - [`docs/architecture.md`](docs/architecture.md) — crate stack, the device-actor model, the Phase-2 roadmap
 - [`docs/ros2-bridge.md`](docs/ros2-bridge.md) — the ROS2 topic-graph mapping and the `rclrs` feature
 - [`docs/projection.md`](docs/projection.md) — the Sunshine/Moonlight projection subsystem
+- [`docs/sdr.md`](docs/sdr.md) — the Software-Defined Radio subsystem (HackRF One)
 - [`docs/python-api.md`](docs/python-api.md) — the `atomr_physical.*` module map and the native-overlay pattern
 - [`docs/feature-matrix.md`](docs/feature-matrix.md) — every feature flag and what it pulls in
 - [`docs/release-pipeline.md`](docs/release-pipeline.md) / [`docs/release-process.md`](docs/release-process.md) — the release pipeline (currently manual-only; see `RELEASING.md`)

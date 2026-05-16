@@ -24,6 +24,8 @@ atomr-physical-actuation = { workspace = true }
 atomr-physical-robotics  = { workspace = true }
 atomr-physical-ros2      = { workspace = true }
 atomr-physical-projection = { workspace = true }
+atomr-physical-sdr       = { workspace = true, optional = true }
+rs-hackrf                = { workspace = true, optional = true }
 atomr-physical-testkit   = { workspace = true }
 atomr-core               = { workspace = true }
 atomr-config             = { workspace = true }
@@ -39,3 +41,8 @@ default = []
 # Forward the ros2 crate's `rclrs` feature so `atomr-physical ros2 spin`
 # can drive a live ROS2 graph when the binary is built with this flag.
 rclrs = ["atomr-physical-ros2/rclrs"]
+# Compile the `sdr` subcommand tree (probe / info / rx / tx) into the
+# binary. Off by default — pulls in the rs-hackrf USB backend.
+sdr        = ["dep:atomr-physical-sdr", "dep:rs-hackrf"]
+# Add SigMF capture-to-disk support to `sdr rx --out <path>`.
+sdr-sigmf  = ["sdr", "atomr-physical-sdr/sigmf"]

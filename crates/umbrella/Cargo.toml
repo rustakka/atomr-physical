@@ -23,6 +23,7 @@ atomr-physical-control    = { workspace = true, optional = true }
 atomr-physical-kinematics = { workspace = true, optional = true }
 atomr-physical-hal        = { workspace = true, optional = true }
 atomr-physical-projection = { workspace = true, optional = true }
+atomr-physical-sdr        = { workspace = true, optional = true }
 atomr-physical-testkit    = { workspace = true, optional = true }
 
 [features]
@@ -43,11 +44,13 @@ hal-qdd-mit = ["hal-can", "atomr-physical-hal/qdd-mit"]
 hal-as5048a = ["hal-spi", "atomr-physical-hal/as5048a"]
 hal-all     = ["hal", "hal-bno085", "hal-odrive", "hal-qdd-mit", "hal-as5048a"]
 projection = ["dep:atomr-physical-projection"]
+sdr        = ["dep:atomr-physical-sdr"]
+sdr-sigmf  = ["sdr", "atomr-physical-sdr/sigmf"]
 testkit    = ["dep:atomr-physical-testkit"]
 # `rclrs` forwards to the ros2 crate's live-bridge feature; it requires
 # a ROS2 installation on the build host.
 rclrs      = ["ros2", "atomr-physical-ros2/rclrs"]
-full       = ["sensing", "actuation", "robotics", "ros2", "control", "kinematics", "projection", "testkit"]
+full       = ["sensing", "actuation", "robotics", "ros2", "control", "kinematics", "projection", "sdr", "testkit"]
 # `full-linux` is `full` plus the platform-specific hardware drivers.
 # Linux-only — pulls in socketcan and linux-embedded-hal.
 full-linux = ["full", "hal-all"]

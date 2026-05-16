@@ -12,9 +12,11 @@ pulls in, and when to enable it.
 | `robotics` | ✓ | `atomr-physical-robotics` (+ `sensing`, `actuation`) | you orchestrate a robot (`RobotActor`, `RobotModel`, `Joint`) |
 | `ros2` | — | `atomr-physical-ros2` (+ `robotics`) | you bridge onto the ROS2 topic graph (`TopicMap`, `Ros2Bridge`) |
 | `projection` | — | `atomr-physical-projection` | you project a virtual display to Moonlight clients via Sunshine (`ProjectionActor`, vkms, mDNS, auto-pairing — see [projection.md](projection.md)) |
+| `sdr` | — | `atomr-physical-sdr` | you talk to a HackRF One — `SdrActor` exposes a `broadcast::Receiver<IqChunk>` of streaming `ci8_le` samples (see [sdr.md](sdr.md)) |
+| `sdr-sigmf` | — | `sdr` + `atomr-physical-sdr/sigmf` | you also want on-disk [SigMF](https://github.com/sigmf/SigMF) capture (`SigmfWriter`, `.sigmf-data` + `.sigmf-meta` pairs) |
 | `testkit` | — | `atomr-physical-testkit` | you want `MockSensor` / `MockActuator` in tests |
 | `rclrs` | — | `ros2` + `atomr-physical-ros2/rclrs` | you spin the bridge against a **live** ROS2 graph (needs a ROS2 toolchain) |
-| `full` | — | `sensing` + `actuation` + `robotics` + `ros2` + `projection` + `testkit` | you want everything except the `rclrs` live bridge |
+| `full` | — | `sensing` + `actuation` + `robotics` + `ros2` + `projection` + `sdr-sigmf` + `testkit` | you want everything except the `rclrs` live bridge |
 
 The default feature set (`sensing` + `actuation` + `robotics`) is the
 "control a robot offline" shape — everything you need to model a
@@ -43,6 +45,17 @@ level (the `projection` feature flag): enabling it pulls in
 (for `SIGTERM`-by-PID), and `tempfile`. Default builds skip all of
 these.
 
+### `atomr-physical-sdr`
+
+| Feature | Default | Effect |
+|---|:---:|---|
+| `sigmf` | — | Compiles `SigmfWriter` (and `persist_until_eos`) — the on-disk capture path that lays down `<base>.sigmf-data` raw `ci8_le` plus `<base>.sigmf-meta` JSON. Pulls in `tempfile` for partial-file atomicity. Off by default so a build that only needs the live broadcast surface skips the I/O dependencies. |
+
+The crate is itself opt-in at the umbrella level (the `sdr` feature
+flag): enabling it pulls in `rs-hackrf` and its `libusb1-sys` /
+`futures-channel` dependency chain. The umbrella's `sdr-sigmf`
+feature is `sdr` + `atomr-physical-sdr/sigmf`.
+
 No other crate carries optional features today.
 
 ## Canonical shapes
@@ -60,6 +73,12 @@ atomr-physical = { version = "0.1", features = ["rclrs"] }
 
 # Sunshine/Moonlight video projection (vkms + mDNS + auto-pairing).
 atomr-physical = { version = "0.1", features = ["projection"] }
+
+# HackRF One SDR actor (streaming IQ broadcast).
+atomr-physical = { version = "0.1", features = ["sdr"] }
+
+# Same, plus on-disk SigMF capture.
+atomr-physical = { version = "0.1", features = ["sdr-sigmf"] }
 
 # Everything except the rclrs live bridge — good for CI.
 atomr-physical = { version = "0.1", features = ["full"] }

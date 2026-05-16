@@ -58,6 +58,28 @@ device to a `Ros2Endpoint` (topic name + message type + direction);
 transport-agnostic and builds with no ROS2 installation — see
 [ros2-bridge.md](ros2-bridge.md).
 
+### `atomr-physical-sdr` — the SDR subsystem
+
+Opt-in (umbrella `sdr` feature) crate that extends the input surface
+beyond the single-`Reading` shape into **streaming I/Q**. `SdrActor`
+adapts a HackRF One (via [`rs-hackrf`](https://crates.io/crates/rs-hackrf))
+into a supervised atomr actor: an `SdrActorRef::subscribe()` hands
+out a `tokio::sync::broadcast::Receiver<IqChunk>` carrying interleaved
+`ci8_le` samples behind an `Arc<[i8]>` so every subscriber (live
+consumer, SigMF writer, future ROS2 bridge) shares the buffer without
+copying. With the `sdr-sigmf` umbrella feature, `SigmfWriter` drains
+the broadcast channel into a [SigMF](https://github.com/sigmf/SigMF)
+pair on disk (`*.sigmf-data` raw + `*.sigmf-meta` JSON) that GNU Radio,
+`inspectrum`, and `gqrx` read directly. See [sdr.md](sdr.md).
+
+The SDR subsystem is opt-in by design — its USB / capture deps stay
+off default builds. The same two-form contract every other device
+actor uses applies: `SdrActor::snapshot(n_samples)` is the offline
+form (drives the backend through one start → drain → stop cycle, no
+runtime needed); `.spawn(system, name)` promotes it into a live
+supervised actor. TX is on the surface but returns `Unsupported` —
+`rs-hackrf` 0.4 is RX-only.
+
 ### `atomr-physical-projection` — the projection supervisor
 
 Opt-in (umbrella `projection` feature) crate that extends the output
@@ -93,7 +115,8 @@ crate, plus a thin pure-Python facade per submodule. See
 
 ### `atomr-physical-cli` — the operator surface
 
-The `atomr-physical` binary: `devices`, `sense`, `actuate`, `ros2`.
+The `atomr-physical` binary: `devices`, `sense`, `actuate`, `ros2`,
+`project`, `sdr`.
 
 ## The device-actor model
 
@@ -132,6 +155,7 @@ the 0.2.x line. Every type below now has both an **offline** form
 | `ActuatorActor` | `dispatch(cmd).await` — envelope + driver | `ActuatorActor::spawn` → `ActuatorActorRef` with `dispatch()` and `health_check()`; commands serialise through the mailbox |
 | `RobotActor` | `add_sensor` / `add_actuator` + offline lookups | `RobotActor::spawn` → `RobotActorRef` with `sensor(id)` / `actuator(id)` / `child_ids()`; children spawned in `pre_start` under the supervisor's `OneForOneStrategy`, so a driver fault restarts only the affected subtree |
 | `Ros2Bridge` | `topics_mut().bind_*` — offline TopicMap | `Ros2Bridge::spin().await` — behind the `rclrs` feature, stands up a real ROS 2 node with a `DynamicPublisher` per sensor / `DynamicSubscription` per actuator and returns a `Ros2BridgeHandle` for `publish_reading` + `shutdown` |
+| `SdrActor` *(opt-in)* | `snapshot(n).await` — one-shot capture, drives the backend through start → drain → stop with no runtime | `SdrActor::spawn` → `SdrActorRef` with `subscribe()` (a `broadcast::Receiver<IqChunk>` of streaming I/Q), `tune()` mid-stream, `start_rx()` / `stop_rx()`, and `transmit()` (currently `Unsupported` on rs-hackrf 0.4) |
 
 ### Restart semantics
 

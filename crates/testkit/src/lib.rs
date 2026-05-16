@@ -4,6 +4,10 @@
 //! [`atomr_physical_core::Sensor`] / [`Actuator`](atomr_physical_core::Actuator)
 //! contract traits with in-memory behaviour, so sensing, actuation, and
 //! robotics code can be exercised without hardware or a ROS2 graph.
+//!
+//! With the `sdr` feature enabled, [`MockSdrDriver`] is also available
+//! — it implements [`atomr_physical_sdr::SdrBackend`] by generating
+//! synthetic IQ samples, so SDR actor tests run hardware-free.
 
 use std::sync::Mutex;
 
@@ -117,6 +121,12 @@ impl Actuator for MockActuator {
         Ok(CommandAck::accepted(actuator))
     }
 }
+
+#[cfg(feature = "sdr")]
+mod sdr_mock;
+
+#[cfg(feature = "sdr")]
+pub use sdr_mock::{MockSdrDriver, MockWaveform};
 
 #[cfg(test)]
 mod tests {

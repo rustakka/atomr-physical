@@ -37,6 +37,12 @@ pub enum Unit {
     Ampere,
     /// Percent, `0.0`–`100.0` — e.g. duty cycle or battery state-of-charge.
     Percent,
+    /// Hertz (frequency / sample rate).
+    Hertz,
+    /// Interleaved 8-bit signed I/Q samples — the SDR baseband format.
+    /// The `value` field on a [`Quantity`] carrying this unit is the
+    /// sample rate in Hz; the capability advertises only the format.
+    Iq,
 }
 
 impl Unit {
@@ -56,6 +62,8 @@ impl Unit {
             Unit::Volt => "V",
             Unit::Ampere => "A",
             Unit::Percent => "%",
+            Unit::Hertz => "Hz",
+            Unit::Iq => "iq",
         }
     }
 }

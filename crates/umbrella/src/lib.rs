@@ -8,9 +8,9 @@
 //! mirroring the convention used by the `atomr` and `atomr-agents`
 //! umbrellas. [`core`] is always present; [`sensing`], [`actuation`],
 //! [`robotics`], [`ros2`], [`control`], [`kinematics`], [`hal`],
-//! [`projection`], and [`testkit`] are opt-in. The `hal-*` features
-//! and `full-linux` are Linux-only because they pull in `socketcan`
-//! and `linux-embedded-hal`.
+//! [`projection`], [`sdr`], and [`testkit`] are opt-in. The `hal-*`
+//! features and `full-linux` are Linux-only because they pull in
+//! `socketcan` and `linux-embedded-hal`.
 //!
 //! ```toml
 //! [dependencies]
@@ -22,6 +22,9 @@
 //!
 //! # Sunshine/Moonlight video projection (pulls reqwest + mdns-sd):
 //! # atomr-physical = { version = "0.1", features = ["projection"] }
+//!
+//! # Software-defined radio capture with SigMF metadata (pulls libusb/nusb):
+//! # atomr-physical = { version = "0.1", features = ["sdr-sigmf"] }
 //! ```
 
 #[doc(inline)]
@@ -58,6 +61,10 @@ pub use atomr_physical_hal as hal;
 #[cfg(feature = "projection")]
 #[doc(inline)]
 pub use atomr_physical_projection as projection;
+
+#[cfg(feature = "sdr")]
+#[doc(inline)]
+pub use atomr_physical_sdr as sdr;
 
 #[cfg(feature = "testkit")]
 #[doc(inline)]

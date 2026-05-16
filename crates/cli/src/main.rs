@@ -11,6 +11,9 @@
 //! * `ros2 plan <robot>` — print the per-device ROS2 topic map.
 //! * `ros2 spin <robot>` — drive the bridge against a live ROS2 graph
 //!   (requires the binary built with `--features rclrs`).
+//! * `sdr {probe,info,rx,tx}` — talk to a HackRF One via the
+//!   `atomr-physical-sdr` actor (requires `--features sdr`; SigMF
+//!   capture-to-disk requires `--features sdr-sigmf`).
 //!
 //! The "registry" is a tiny in-process map seeded with one mock sensor
 //! plus one mock actuator. Real deployments swap the registry for one
@@ -82,6 +85,13 @@ enum Cmd {
         #[command(subcommand)]
         op: ProjectCmd,
     },
+    /// Software-Defined Radio operations (HackRF One). Only compiled
+    /// when the binary is built with `--features sdr`.
+    #[cfg(feature = "sdr")]
+    Sdr {
+        #[command(subcommand)]
+        op: SdrCmd,
+    },
 }
 
 #[derive(Subcommand)]
@@ -132,6 +142,58 @@ enum Ros2Cmd {
         /// How long to spin before shutting the bridge down (milliseconds).
         #[arg(long, default_value_t = 2000)]
         duration_ms: u64,
+    },
+}
+
+#[cfg(feature = "sdr")]
+#[derive(Subcommand)]
+enum SdrCmd {
+    /// List the serial numbers of every connected HackRF.
+    Probe,
+    /// Open the first available HackRF and print board / firmware info.
+    Info,
+    /// Receive IQ for a fixed duration, printing a summary at the end.
+    /// With `--out` and the `sdr-sigmf` feature, also write a SigMF
+    /// pair to disk.
+    Rx {
+        /// Centre frequency. Accepts SI suffixes (e.g. `100M`, `2.4G`,
+        /// or plain `123456789`).
+        #[arg(long)]
+        centre: String,
+        /// Sample rate. Accepts SI suffixes (e.g. `4M`, `2000000`).
+        #[arg(long)]
+        rate: String,
+        /// LNA gain, in dB (multiple of 8, 0..=40).
+        #[arg(long, default_value_t = 16)]
+        gain_lna: u8,
+        /// VGA / baseband gain, in dB (multiple of 2, 0..=62).
+        #[arg(long, default_value_t = 20)]
+        gain_vga: u8,
+        /// Enable the +14 dB front-end RF amplifier.
+        #[arg(long)]
+        amp: bool,
+        /// Enable the antenna-port bias-T (DC power to a powered LNA).
+        #[arg(long)]
+        bias_t: bool,
+        /// How long to capture for (milliseconds).
+        #[arg(long)]
+        duration_ms: u64,
+        /// Optional SigMF capture base path — requires `sdr-sigmf`.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Submit a TX burst from a raw `ci8_le` file. Returns the backend's
+    /// `Unsupported` error today (rs-hackrf 0.4 is RX-only).
+    Tx {
+        /// Centre frequency. Accepts SI suffixes (see `rx --centre`).
+        #[arg(long)]
+        centre: String,
+        /// Sample rate. Accepts SI suffixes (see `rx --rate`).
+        #[arg(long)]
+        rate: String,
+        /// Path to a file of interleaved `ci8_le` samples to transmit.
+        #[arg(long)]
+        file: PathBuf,
     },
 }
 
@@ -491,6 +553,266 @@ async fn cmd_project_pair(
     Ok(())
 }
 
+/// Parse an unsigned-integer Hz value with optional SI suffix (`k`,
+/// `M`, `G`, case-insensitive). Plain integers pass through unchanged.
+/// Examples: `100M` → 100_000_000, `4M` → 4_000_000, `1G` →
+/// 1_000_000_000, `100k` → 100_000, `123` → 123.
+#[cfg(feature = "sdr")]
+fn parse_hz(s: &str) -> Result<u64> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("empty frequency/rate value");
+    }
+    let last = trimmed.chars().last().unwrap();
+    let (number_part, multiplier): (&str, u64) = match last {
+        'k' | 'K' => (&trimmed[..trimmed.len() - 1], 1_000),
+        'm' | 'M' => (&trimmed[..trimmed.len() - 1], 1_000_000),
+        'g' | 'G' => (&trimmed[..trimmed.len() - 1], 1_000_000_000),
+        '0'..='9' => (trimmed, 1),
+        other => anyhow::bail!("unknown frequency suffix {other:?} in {s:?}"),
+    };
+    // Accept fractional inputs like `2.4G` by routing through f64 only
+    // when the number portion has a `.`. Pure integers stay integer.
+    if number_part.contains('.') {
+        let n: f64 = number_part
+            .parse()
+            .map_err(|e| anyhow::anyhow!("bad number {number_part:?} in {s:?}: {e}"))?;
+        let scaled = n * multiplier as f64;
+        if !scaled.is_finite() || scaled < 0.0 {
+            anyhow::bail!("frequency {s:?} is not a finite non-negative value");
+        }
+        Ok(scaled as u64)
+    } else {
+        let n: u64 = number_part
+            .parse()
+            .map_err(|e| anyhow::anyhow!("bad number {number_part:?} in {s:?}: {e}"))?;
+        n.checked_mul(multiplier)
+            .ok_or_else(|| anyhow::anyhow!("frequency {s:?} overflows u64"))
+    }
+}
+
+#[cfg(feature = "sdr")]
+async fn cmd_sdr_probe() -> Result<()> {
+    match atomr_physical_sdr::HackRfDriver::probe() {
+        Ok(serials) => {
+            for s in serials {
+                println!("{s}");
+            }
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("sdr probe failed: {e}");
+            anyhow::bail!("sdr probe failed: {e}");
+        }
+    }
+}
+
+#[cfg(feature = "sdr")]
+async fn cmd_sdr_info() -> Result<()> {
+    let driver = atomr_physical_sdr::HackRfDriver::open_first()
+        .map_err(|e| anyhow::anyhow!("open hackrf: {e}"))?;
+    let info = driver
+        .info()
+        .await
+        .map_err(|e| anyhow::anyhow!("hackrf info: {e}"))?;
+    println!(
+        "board_id      = {} ({})",
+        info.board_id,
+        rs_hackrf::transport::board_id_name(info.board_id)
+    );
+    println!("version       = {}", info.version);
+    println!("serial        = {}", info.serial);
+    println!("usb_api_ver   = 0x{:04x}", info.usb_api_version);
+    Ok(())
+}
+
+#[cfg(feature = "sdr")]
+async fn cmd_sdr_rx(
+    centre: String,
+    rate: String,
+    gain_lna: u8,
+    gain_vga: u8,
+    amp: bool,
+    bias_t: bool,
+    duration_ms: u64,
+    out: Option<PathBuf>,
+) -> Result<()> {
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    if out.is_some() && !cfg!(feature = "sdr-sigmf") {
+        anyhow::bail!("`--out` requires the `sdr-sigmf` feature — rebuild with --features sdr-sigmf");
+    }
+
+    let centre_hz = parse_hz(&centre)?;
+    let rate_hz_u64 = parse_hz(&rate)?;
+    let rate_hz: u32 = rate_hz_u64
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("sample rate {rate_hz_u64} exceeds u32 range"))?;
+
+    let params = atomr_physical_sdr::SdrParams::default_rx()
+        .with_centre_hz(centre_hz)
+        .with_sample_rate_hz(rate_hz)
+        .with_lna_gain_db(gain_lna)
+        .with_vga_gain_db(gain_vga)
+        .with_amp_enable(amp)
+        .with_antenna_port_pwr(bias_t);
+
+    let driver = atomr_physical_sdr::HackRfDriver::open_first()
+        .map_err(|e| anyhow::anyhow!("open hackrf: {e}"))?;
+    let driver: Arc<dyn atomr_physical_sdr::SdrBackend> = Arc::new(driver);
+
+    let system = atomr_core::actor::ActorSystem::create("sdr-cli", atomr_config::Config::reference())
+        .await
+        .map_err(|e| anyhow::anyhow!("actor system: {e:?}"))?;
+    let actor_ref = atomr_physical_sdr::SdrActor::new(driver)
+        .with_params(params.clone())
+        .auto_start_rx(true)
+        .spawn(&system, "sdr-cli")
+        .map_err(|e| anyhow::anyhow!("spawn sdr actor: {e:?}"))?;
+
+    println!(
+        "sdr rx: centre={} Hz rate={} Hz lna={} vga={} amp={} bias_t={} duration={}ms{}",
+        params.centre_hz,
+        params.sample_rate_hz,
+        params.lna_gain_db,
+        params.vga_gain_db,
+        params.amp_enable,
+        params.antenna_port_pwr,
+        duration_ms,
+        out.as_ref()
+            .map(|p| format!(" out={}", p.display()))
+            .unwrap_or_default(),
+    );
+
+    let mut rx = actor_ref.subscribe();
+
+    // Optional SigMF persistence — only compiled when sdr-sigmf is on.
+    #[cfg(feature = "sdr-sigmf")]
+    let sigmf_task: Option<tokio::task::JoinHandle<atomr_physical_sdr::SdrResult<atomr_physical_sdr::SigmfWriter>>> =
+        if let Some(path) = out.clone() {
+            let writer_rx = actor_ref.subscribe();
+            let writer = atomr_physical_sdr::SigmfWriter::open(
+                atomr_physical_sdr::PersistConfig::at(path),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("open sigmf writer: {e}"))?;
+            Some(tokio::spawn(atomr_physical_sdr::persist_until_eos(
+                writer_rx, writer,
+            )))
+        } else {
+            None
+        };
+
+    let start = Instant::now();
+    let deadline = start + Duration::from_millis(duration_ms);
+    let mut chunks: u64 = 0;
+    let mut sample_pairs: u64 = 0;
+    let mut bytes: u64 = 0;
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            break;
+        }
+        let remaining = deadline - now;
+        match tokio::time::timeout(remaining, rx.recv()).await {
+            Ok(Ok(chunk)) => {
+                chunks += 1;
+                sample_pairs += chunk.len_samples() as u64;
+                bytes += chunk.len_bytes() as u64;
+            }
+            Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(n))) => {
+                tracing::warn!(missed = n, "sdr rx: broadcast lagged");
+                continue;
+            }
+            Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => break,
+            Err(_elapsed) => break,
+        }
+    }
+    let elapsed = start.elapsed();
+
+    // Stop RX before pulling the actor down.
+    if let Err(e) = actor_ref.stop_rx().await {
+        tracing::warn!(?e, "stop_rx returned error; tearing actor system down anyway");
+    }
+
+    #[cfg(feature = "sdr-sigmf")]
+    {
+        if let Some(task) = sigmf_task {
+            match task.await {
+                Ok(Ok(writer)) => {
+                    println!(
+                        "sigmf: wrote {} bytes to {}",
+                        writer.bytes_written(),
+                        writer.data_path().display(),
+                    );
+                }
+                Ok(Err(e)) => {
+                    tracing::error!(?e, "sigmf writer reported error");
+                }
+                Err(e) => {
+                    tracing::error!(?e, "sigmf writer task panicked");
+                }
+            }
+        }
+    }
+
+    system.terminate().await;
+
+    let mib = bytes as f64 / (1024.0 * 1024.0);
+    println!(
+        "received {chunks} chunks ({sample_pairs} sample-pairs, {mib:.2} MiB) in {:.3}s",
+        elapsed.as_secs_f64(),
+    );
+    Ok(())
+}
+
+#[cfg(feature = "sdr")]
+async fn cmd_sdr_tx(centre: String, rate: String, file: PathBuf) -> Result<()> {
+    use std::sync::Arc;
+
+    let centre_hz = parse_hz(&centre)?;
+    let rate_hz_u64 = parse_hz(&rate)?;
+    let rate_hz: u32 = rate_hz_u64
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("sample rate {rate_hz_u64} exceeds u32 range"))?;
+
+    let bytes = std::fs::read(&file)
+        .with_context(|| format!("read tx samples from {}", file.display()))?;
+    // `i8` and `u8` share their byte layout — cast the slice in place.
+    let samples: Vec<i8> = bytes.iter().map(|&b| b as i8).collect();
+    let samples_arc: Arc<[i8]> = Arc::from(samples);
+
+    let params = atomr_physical_sdr::SdrParams::default_rx()
+        .with_centre_hz(centre_hz)
+        .with_sample_rate_hz(rate_hz);
+
+    let driver = atomr_physical_sdr::HackRfDriver::open_first()
+        .map_err(|e| anyhow::anyhow!("open hackrf: {e}"))?;
+    let driver: Arc<dyn atomr_physical_sdr::SdrBackend> = Arc::new(driver);
+
+    let system = atomr_core::actor::ActorSystem::create("sdr-cli", atomr_config::Config::reference())
+        .await
+        .map_err(|e| anyhow::anyhow!("actor system: {e:?}"))?;
+    let actor_ref = atomr_physical_sdr::SdrActor::new(driver)
+        .with_params(params)
+        .spawn(&system, "sdr-cli")
+        .map_err(|e| anyhow::anyhow!("spawn sdr actor: {e:?}"))?;
+
+    let result = actor_ref.transmit(samples_arc).await;
+    system.terminate().await;
+    match result {
+        Ok(()) => {
+            println!("sdr tx: submitted {} bytes", bytes.len());
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("sdr tx: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
 async fn cmd_ros2_spin(registry: &DeviceRegistry, robot: String, duration_ms: u64) -> Result<()> {
     if registry.robot != RobotId::from(robot.clone()) {
         anyhow::bail!("unknown robot: {robot} (registry holds {})", registry.robot);
@@ -546,6 +868,27 @@ async fn main() -> Result<()> {
                 hostname,
                 pin,
             } => cmd_project_pair(sunshine_binary, hostname, pin).await?,
+        },
+        #[cfg(feature = "sdr")]
+        Cmd::Sdr { op } => match op {
+            SdrCmd::Probe => cmd_sdr_probe().await?,
+            SdrCmd::Info => cmd_sdr_info().await?,
+            SdrCmd::Rx {
+                centre,
+                rate,
+                gain_lna,
+                gain_vga,
+                amp,
+                bias_t,
+                duration_ms,
+                out,
+            } => {
+                cmd_sdr_rx(
+                    centre, rate, gain_lna, gain_vga, amp, bias_t, duration_ms, out,
+                )
+                .await?
+            }
+            SdrCmd::Tx { centre, rate, file } => cmd_sdr_tx(centre, rate, file).await?,
         },
     }
     Ok(())

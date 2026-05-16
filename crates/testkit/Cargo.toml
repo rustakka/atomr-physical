@@ -15,7 +15,16 @@ readme        = "../../README.md"
 
 [dependencies]
 atomr-physical-core = { workspace = true }
+atomr-physical-sdr  = { workspace = true, optional = true }
 async-trait         = { workspace = true }
+tokio               = { workspace = true, optional = true }
+chrono              = { workspace = true, optional = true }
+
+[features]
+default = []
+# Enables `MockSdrDriver` — pulls in the SDR crate so the mock can
+# implement its `SdrBackend` trait.
+sdr     = ["dep:atomr-physical-sdr", "dep:tokio", "dep:chrono"]
 
 [dev-dependencies]
 tokio = { workspace = true }

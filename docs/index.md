@@ -105,6 +105,7 @@ the network deps it pulls in (`reqwest`, `mdns-sd`). See
 - [Architecture](architecture.md) — crate stack, the device-actor model, the Phase-2 roadmap.
 - [ROS2 bridge](ros2-bridge.md) — the topic-graph mapping and the `rclrs` feature.
 - [Projection](projection.md) — the Sunshine/Moonlight video projection subsystem (opt-in).
+- [SDR](sdr.md) — the HackRF One Software-Defined Radio subsystem (opt-in).
 - [Python API](python-api.md) — the `atomr_physical.*` module map and the native-overlay pattern.
 - [Feature matrix](feature-matrix.md) — every feature flag and what it pulls in.
 - [Release pipeline](release-pipeline.md) / [Release process](release-process.md) — the release pipeline (currently manual-only).
